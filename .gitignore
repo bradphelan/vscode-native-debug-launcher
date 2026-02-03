@@ -1,0 +1,9 @@
+out/
+dist/
+node_modules/
+*.vsix
+*.log
+.vscode-test/test-app/build/
+test-workspace*
+src/version.json
+test-app/build

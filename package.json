@@ -1,0 +1,71 @@
+{
+  "name": "code-dbg",
+  "displayName": "Code DBG",
+  "description": "Launch executables with debugger from terminal without launch.json",
+  "version": "0.1.32",
+  "publisher": "bradphelan",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bradphelan/vscode-native-debug-launcher"
+  },
+  "bugs": {
+    "url": "https://github.com/bradphelan/vscode-native-debug-launcher/issues"
+  },
+  "homepage": "https://github.com/bradphelan/vscode-native-debug-launcher#readme",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Debuggers",
+    "Other"
+  ],
+  "activationEvents": [
+    "onUri",
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "extension.debugLaunch",
+        "title": "Launch Debugger"
+      },
+      {
+        "command": "code-dbg.installCli",
+        "title": "Code DBG: Install CLI"
+      },
+      {
+        "command": "code-dbg.checkCliStatus",
+        "title": "Code DBG: Check CLI Status"
+      }
+    ],
+    "urlHandlers": [
+      {
+        "scheme": "vscode",
+        "authority": "bradphelan.code-dbg"
+      },
+      {
+        "scheme": "vscode-insiders",
+        "authority": "bradphelan.code-dbg"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.39.2",
+    "typescript": "^5.0.0",
+    "@vscode/vsce": "^2.20.0"
+  },
+  "dependencies": {}
+}

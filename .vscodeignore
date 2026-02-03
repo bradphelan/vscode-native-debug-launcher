@@ -1,0 +1,12 @@
+.git
+.gitignore
+.vscode
+.vscode-test
+.eslintrc.json
+**/*.map
+**/*.ts
+node_modules
+out/test
+test
+scripts
+*.md
