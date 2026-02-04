@@ -46,7 +46,6 @@ code-dbg [OPTIONS] -- <executable> [arguments...]
 **Options:**
 
 - `--cwd=<dir>` — Working directory (defaults to current directory)
-- `--insiders` — Force use of VS Code Insiders (auto-detected from environment if running in VS Code)
 - `--url-only` — Only print the debug URL, do not launch VS Code
 - `--` — Required separator between code-dbg options and executable/args
 
@@ -64,12 +63,6 @@ code-dbg --cwd=C:\workspace -- myapp.exe
 
 # Print URL only (useful for debugging)
 code-dbg --url-only -- myapp.exe
-
-# Force Stable version (if running in Insiders)
-code-dbg -- myapp.exe
-
-# Force Insiders version (if running in Stable)
-code-dbg --insiders -- myapp.exe
 
 # With options and arguments starting with --
 code-dbg --cwd=/tmp -- ./app.exe -- --my-flag
@@ -97,10 +90,8 @@ The `code-dbg` command automatically detects whether you're running in **VS Code
 
 - ✅ When run from Insiders terminal → Uses `vscode-insiders://` scheme automatically
 - ✅ When run from Stable terminal → Uses `vscode://` scheme automatically
-- ✅ Can override with `--insiders` flag if needed
 - ❌ When run outside VS Code → Exits with clear error message
 
-This means you **don't need to specify `--insiders`** in most cases—it just works!
 
 ## Build and Install from Source
 
