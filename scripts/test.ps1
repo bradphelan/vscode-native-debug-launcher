@@ -406,32 +406,24 @@ if (-not $handlerReady) {
 # ============================================================================
 Write-Section "7.5. Verify CLI Installation"
 
-Write-Step "Checking extension log for CLI installation..."
+Write-Step "Checking extension log for CLI setup..."
 $logContent = Get-Content $extensionLogFile -Raw
 
-# Check for CLI version check
-$hasCliVersionCheck = ($logContent -like "*CLI Version Check:*")
-$null = Expect $hasCliVersionCheck "CLI version check executed" "CLI version check not found in log"
-
-# Extract version info
-if ($hasCliVersionCheck -and $logContent -match "Bundled: ([\d.]+)") {
-    $bundledVersion = $matches[1]
-    Write-Check "Bundled version: $bundledVersion"
-}
-
-# Check for installation process
+# Check for environmentVariableCollection setup
 # The new architecture uses VS Code's environmentVariableCollection
-$hasCliInstallActivity = (
+$hasCliPathSetup = (
     $logContent -like "*Added app directory to VS Code terminal PATH*" -or
-    $logContent -like "*App directory already in VS Code terminal PATH*" -or
-    $logContent -like "*CLI is up to date*"
+    $logContent -like "*App directory already in VS Code terminal PATH*"
 )
-$null = Expect $hasCliInstallActivity "CLI installation activity found" "No CLI installation activity found"
+$null = Expect $hasCliPathSetup "CLI PATH setup via environmentVariableCollection" "CLI PATH setup not found in log"
 
 # Extract the app directory path from log
 if ($logContent -match "Added app directory to VS Code terminal PATH: (.+)$") {
     $appDirPath = $matches[1].Trim()
     Write-Check "App directory added to VS Code terminals: $appDirPath"
+}
+elseif ($logContent -match "App directory already in VS Code terminal PATH") {
+    Write-Check "App directory already configured in environmentVariableCollection"
 }
 
 # Note: PATH is now managed via VS Code's environmentVariableCollection
