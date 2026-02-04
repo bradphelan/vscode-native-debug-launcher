@@ -7,3 +7,4 @@ node_modules/
 test-workspace*
 src/version.json
 test-app/build
+CHANGELOG.md
