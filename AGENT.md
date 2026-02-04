@@ -69,6 +69,8 @@ Example:
 
 **All commits must use conventional commit format** for automatic changelog generation.
 
+**Don't comment on update of version in package.json**
+
 Use these prefixes:
 
 - `feat:` – New features or capabilities
@@ -90,6 +92,7 @@ refactor: Extract debugger launch logic into separate function
 ```
 
 The changelog generation script (`.\scripts\generate-changelog.ps1`) automatically categorizes commits based on these prefixes.
+
 
 ## Building and Releasing
 

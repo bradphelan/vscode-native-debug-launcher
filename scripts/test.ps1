@@ -136,7 +136,7 @@ Write-Section "0. Build"
 if (-not $NoBuild) {
     Write-Step "Building extension..."
     Push-Location $projectRoot
-    & (Join-Path $projectRoot "scripts\build.ps1")
+    & (Join-Path $projectRoot "scripts\build.ps1") -Dev
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "Extension build failed"
         exit 1
