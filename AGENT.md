@@ -91,6 +91,67 @@ refactor: Extract debugger launch logic into separate function
 
 The changelog generation script (`.\scripts\generate-changelog.ps1`) automatically categorizes commits based on these prefixes.
 
+## Building and Releasing
+
+### Development Builds
+
+For testing and development, use:
+
+```powershell
+.\scripts\build.ps1 -Dev
+```
+
+This:
+- Bumps the patch version (0.1.37 → 0.1.38)
+- Generates CHANGELOG.md from commits
+- Compiles TypeScript
+- Packages VSIX file
+- **Does NOT** create git tags or commit
+
+Use this for:
+- Local testing before committing changes
+- CI/CD pipelines
+- Pre-release verification
+
+### Release Builds
+
+When ready to publish a new version:
+
+```powershell
+.\scripts\build.ps1 -Release
+```
+
+This performs pre-flight checks, then:
+- Bumps the patch version
+- Generates CHANGELOG.md
+- Compiles TypeScript
+- **Commits** version bump + changelog with message: `chore: bump version to X.X.X and update changelog`
+- **Creates git tag** (annotated): `v0.1.37`
+- **Pushes tag** to origin remote
+- Packages VSIX file
+
+Requirements:
+- Working directory must be clean (no uncommitted changes)
+- Git must be configured (`user.name`, `user.email`)
+- Remote `origin` must be configured
+- You must have push permissions
+
+Example release workflow:
+
+```powershell
+# 1. Make changes and commit normally with conventional prefixes
+git commit -m "feat: Add new debug feature"
+git commit -m "fix: Resolve race condition"
+
+# 2. Build and release
+.\scripts\build.ps1 -Release
+
+# 3. Publish to VS Code marketplace
+vsce publish
+```
+
+After release, the tag is pushed to GitHub and CHANGELOG.md reflects only commits since the previous release.
+
 ## Key Files to Watch
 
 - `app/code-dbg.py` – CLI tool, entry point for users
