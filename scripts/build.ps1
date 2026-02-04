@@ -77,6 +77,19 @@ Write-Host "✓ Version info generated" -ForegroundColor Green
 
 Write-Host ""
 
+# Generate changelog
+Write-Host "Generating changelog..." -ForegroundColor Yellow
+Push-Location $projectRoot
+& (Join-Path $projectRoot "scripts\generate-changelog.ps1")
+Pop-Location
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Failed to generate changelog" -ForegroundColor Red
+    exit 1
+}
+Write-Host "✓ Changelog generated" -ForegroundColor Green
+
+Write-Host ""
+
 # Install dependencies
 Write-Host "Installing dependencies..." -ForegroundColor Yellow
 Push-Location $projectRoot
