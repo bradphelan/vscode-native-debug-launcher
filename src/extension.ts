@@ -156,6 +156,22 @@ export async function activate(context: vscode.ExtensionContext) {
   );
   context.subscriptions.push(checkCliStatusCmd);
 
+  // Add CLI app directory to PATH for VS Code terminals
+  const appDir = path.join(context.extensionPath, "app");
+  const envCollection = context.environmentVariableCollection;
+
+  // Check if already added to avoid duplicates
+  const existingPath = envCollection.get("PATH");
+  const pathSeparator = process.platform === "win32" ? ";" : ":";
+
+  if (!existingPath || !existingPath.value.includes(appDir)) {
+    envCollection.append("PATH", `${pathSeparator}${appDir}`);
+    log(`✅ Added app directory to VS Code terminal PATH: ${appDir}`);
+    log(`   (Applies to new terminals opened in VS Code)`);
+  } else {
+    log(`✅ App directory already in VS Code terminal PATH`);
+  }
+
   // Auto-install or upgrade CLI
   await autoInstallOrUpgradeCli(context);
 
@@ -407,8 +423,8 @@ async function autoInstallOrUpgradeCli(
 
         const isFirstInstall = !installedVersion;
         const message = isFirstInstall
-          ? `✓ Code DBG CLI installed to ${result.installPath}. You must RESTART your terminal/PowerShell for the 'code-dbg' command to work.`
-          : `✓ Code DBG CLI updated to v${bundledVersion}. RESTART your terminal for the update to take effect.`;
+          ? `✓ Code DBG CLI installed to ${result.installPath}. Open a new terminal in VS Code to use 'code-dbg'.`
+          : `✓ Code DBG CLI updated to v${bundledVersion}. Open a new terminal for the update.`;
 
         log(`✅ ${message}`);
 
@@ -472,63 +488,10 @@ interface InstallResult {
 }
 
 /**
- * Adds a directory to the Windows user PATH environment variable using PowerShell.
- *
- * This function uses PowerShell's native array operators (-split, -notin, -join) to:
- * - Parse the existing PATH into an array
- * - Check if the directory is already present (case-insensitive)
- * - Add it only if it's not already there (prevents duplicates)
- * - Join the array back and set the environment variable
- *
- * @param installDir - The full path to the directory to add to PATH
- * @returns Promise<boolean> - true if successful or already exists, false on error
- *
- * @note Requires terminal restart for changes to take effect in current session
- * @note Only updates user PATH, not system PATH (no admin required)
+ * NOTE: PATH modification is now handled via environmentVariableCollection in activate()
+ * This makes the PATH change apply only to terminals opened in VS Code,
+ * without polluting the system environment.
  */
-async function addToUserPath(installDir: string): Promise<boolean> {
-  try {
-    // PowerShell script that safely manages PATH without duplicates
-    const psScript = `
-$installDir = '${installDir.replace(/'/g, "''")}'
-$path = [Environment]::GetEnvironmentVariable('PATH', 'User')
-$pathArray = if ($path) { $path -split ';' | Where-Object { $_ } } else { @() }
-
-if ($installDir -notin $pathArray) {
-  $pathArray += $installDir
-  [Environment]::SetEnvironmentVariable('PATH', ($pathArray -join ';'), 'User')
-  Write-Output 'ADDED'
-} else {
-  Write-Output 'EXISTS'
-}
-`;
-    const { stdout } = await execAsync(
-      `powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`,
-    );
-    const result = stdout.trim();
-
-    if (result === "ADDED") {
-      log(`✓ Added ${installDir} to user PATH`);
-      log(
-        `⚠️  Restart your terminal/PowerShell for 'code-dbg' to be available`,
-      );
-      return true;
-    } else if (result === "EXISTS") {
-      log(`✓ ${installDir} is already in user PATH`);
-      return true;
-    }
-    return false;
-  } catch (error) {
-    log(
-      `⚠️  Could not update PATH: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    log(`   You can manually add to PATH by running in PowerShell:`);
-    log(
-      `   $path = [Environment]::GetEnvironmentVariable('PATH', 'User'); [Environment]::SetEnvironmentVariable('PATH', "$path;${installDir}", 'User')`,
-    );
-    return false;
-  }
-}
 
 async function installCli(
   context: vscode.ExtensionContext,
@@ -546,19 +509,12 @@ async function installCli(
       };
     }
 
-    // Just add the app directory to PATH
-    if (platform === "win32") {
-      await addToUserPath(appDir);
-      log(`✓ Added extension app directory to user PATH: ${appDir}`);
-    } else {
-      // On Unix, just log instructions
-      const pathEnv = process.env.PATH || "";
-      if (!pathEnv.includes(appDir)) {
-        log(
-          `ℹ️  On Unix, add this to ~/.bashrc or ~/.zshrc:\nexport PATH="${appDir}:$PATH"`,
-        );
-      }
-    }
+    // PATH is managed via environmentVariableCollection in activate()
+    // No need to modify system PATH - it's already available in VS Code terminals
+    log(
+      `✓ CLI available in VS Code terminals via environmentVariableCollection`,
+    );
+    log(`   Path: ${appDir}`);
 
     return {
       success: true,
@@ -598,7 +554,7 @@ async function installCliCommand(
         await context.globalState.update("codeDbg.cliInstallAttempted", false);
 
         vscode.window.showInformationMessage(
-          `✓ Code DBG CLI installed to ${result.installPath}. Restart your terminal.`,
+          `✓ Code DBG CLI installed to ${result.installPath}. Open a new VS Code terminal to use it.`,
         );
       } else {
         vscode.window.showErrorMessage(
