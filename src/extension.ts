@@ -1,11 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import * as os from "os";
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
 
 interface DebugPayload {
   exe: string;
@@ -139,23 +134,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(cmdDisposable);
 
-  // Register CLI install commands
-  const installCliCmd = vscode.commands.registerCommand(
-    "code-dbg.installCli",
-    async () => {
-      await installCliCommand(context);
-    },
-  );
-  context.subscriptions.push(installCliCmd);
-
-  const checkCliStatusCmd = vscode.commands.registerCommand(
-    "code-dbg.checkCliStatus",
-    async () => {
-      await checkCliStatusCommand(context);
-    },
-  );
-  context.subscriptions.push(checkCliStatusCmd);
-
   // Add CLI app directory to PATH for VS Code terminals
   const appDir = path.join(context.extensionPath, "app");
   const envCollection = context.environmentVariableCollection;
@@ -171,9 +149,6 @@ export async function activate(context: vscode.ExtensionContext) {
   } else {
     log(`✅ App directory already in VS Code terminal PATH`);
   }
-
-  // Auto-install or upgrade CLI
-  await autoInstallOrUpgradeCli(context);
 
   log("\n✅ Extension activated successfully");
   log("✅ URL handler is registered and ready");
@@ -384,226 +359,6 @@ function detectDebugger(exePath: string): string {
 
   // Fallback
   return "gdb";
-}
-
-async function autoInstallOrUpgradeCli(
-  context: vscode.ExtensionContext,
-): Promise<void> {
-  try {
-    const packageJson = JSON.parse(
-      fs.readFileSync(
-        path.join(context.extensionPath, "package.json"),
-        "utf-8",
-      ),
-    );
-    const bundledVersion = packageJson.version;
-    const installedVersion = context.globalState.get<string>(
-      "codeDbg.installedCliVersion",
-    );
-
-    log(`\n📦 CLI Version Check:`);
-    log(`   Bundled: ${bundledVersion}`);
-    log(`   Installed: ${installedVersion || "none"}`);
-
-    // The app directory always exists in the extension, so just check if PATH needs updating
-    if (installedVersion !== bundledVersion) {
-      if (!installedVersion) {
-        log(`\n🔄 Installing CLI...`);
-      } else {
-        log(`\n🔄 CLI version mismatch - updating PATH reference...`);
-      }
-      const result = await installCli(context);
-
-      if (result.success) {
-        await context.globalState.update(
-          "codeDbg.installedCliVersion",
-          bundledVersion,
-        );
-        await context.globalState.update("codeDbg.cliInstallAttempted", false);
-
-        const isFirstInstall = !installedVersion;
-        const message = isFirstInstall
-          ? `✓ Code DBG CLI installed to ${result.installPath}. Open a new terminal in VS Code to use 'code-dbg'.`
-          : `✓ Code DBG CLI updated to v${bundledVersion}. Open a new terminal for the update.`;
-
-        log(`✅ ${message}`);
-
-        // Skip notifications in test mode
-        if (!isTestMode) {
-          const action = await vscode.window.showInformationMessage(
-            message,
-            "Open Terminal",
-            "Show Docs",
-          );
-
-          if (action === "Open Terminal") {
-            vscode.commands.executeCommand("workbench.action.terminal.new");
-          } else if (action === "Show Docs") {
-            vscode.env.openExternal(
-              vscode.Uri.parse(
-                "https://github.com/bradphelan/vscode-native-debug-launcher#readme",
-              ),
-            );
-          }
-        }
-      } else {
-        const alreadyAttempted = context.globalState.get<boolean>(
-          "codeDbg.cliInstallAttempted",
-        );
-        if (!alreadyAttempted && !isTestMode) {
-          log(`❌ CLI installation failed: ${result.error}`);
-          const action = await vscode.window.showErrorMessage(
-            `Failed to install Code DBG CLI: ${result.error}`,
-            "Retry",
-            "Manual Instructions",
-          );
-
-          if (action === "Retry") {
-            await installCliCommand(context);
-          } else if (action === "Manual Instructions") {
-            vscode.env.openExternal(
-              vscode.Uri.parse(
-                "https://github.com/bradphelan/vscode-native-debug-launcher#install",
-              ),
-            );
-          }
-
-          await context.globalState.update("codeDbg.cliInstallAttempted", true);
-        } else if (!alreadyAttempted) {
-          log(`❌ CLI installation failed: ${result.error}`);
-        }
-      }
-    } else {
-      log(`✅ CLI is up to date (v${bundledVersion})`);
-    }
-  } catch (error) {
-    logError("Failed to check/install CLI", error as Error);
-  }
-}
-
-interface InstallResult {
-  success: boolean;
-  installPath?: string;
-  error?: string;
-}
-
-/**
- * NOTE: PATH modification is now handled via environmentVariableCollection in activate()
- * This makes the PATH change apply only to terminals opened in VS Code,
- * without polluting the system environment.
- */
-
-async function installCli(
-  context: vscode.ExtensionContext,
-): Promise<InstallResult> {
-  try {
-    const platform = process.platform;
-
-    // The CLI script is in the app/ directory of the extension
-    const appDir = path.join(context.extensionPath, "app");
-
-    if (!fs.existsSync(appDir)) {
-      return {
-        success: false,
-        error: "app directory not found in extension bundle",
-      };
-    }
-
-    // PATH is managed via environmentVariableCollection in activate()
-    // No need to modify system PATH - it's already available in VS Code terminals
-    log(
-      `✓ CLI available in VS Code terminals via environmentVariableCollection`,
-    );
-    log(`   Path: ${appDir}`);
-
-    return {
-      success: true,
-      installPath: appDir,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-async function installCliCommand(
-  context: vscode.ExtensionContext,
-): Promise<void> {
-  await vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title: "Installing Code DBG CLI...",
-      cancellable: false,
-    },
-    async () => {
-      const result = await installCli(context);
-
-      if (result.success) {
-        const packageJson = JSON.parse(
-          fs.readFileSync(
-            path.join(context.extensionPath, "package.json"),
-            "utf-8",
-          ),
-        );
-        await context.globalState.update(
-          "codeDbg.installedCliVersion",
-          packageJson.version,
-        );
-        await context.globalState.update("codeDbg.cliInstallAttempted", false);
-
-        vscode.window.showInformationMessage(
-          `✓ Code DBG CLI installed to ${result.installPath}. Open a new VS Code terminal to use it.`,
-        );
-      } else {
-        vscode.window.showErrorMessage(
-          `Failed to install CLI: ${result.error}`,
-        );
-      }
-    },
-  );
-}
-
-async function checkCliStatusCommand(
-  context: vscode.ExtensionContext,
-): Promise<void> {
-  const installedVersion = context.globalState.get<string>(
-    "codeDbg.installedCliVersion",
-  );
-  const packageJson = JSON.parse(
-    fs.readFileSync(path.join(context.extensionPath, "package.json"), "utf-8"),
-  );
-  const bundledVersion = packageJson.version;
-
-  let statusMessage = "Code DBG CLI Status:\n\n";
-  statusMessage += `Bundled Version: ${bundledVersion}\n`;
-  statusMessage += `Installed Version: ${installedVersion || "Not installed"}\n\n`;
-
-  // Try to find CLI in PATH
-  try {
-    const command =
-      process.platform === "win32" ? "where code-dbg" : "which code-dbg";
-    const { stdout } = await execAsync(command);
-    const cliPath = stdout.trim().split("\n")[0];
-    statusMessage += `✓ Found in PATH: ${cliPath}\n`;
-  } catch {
-    statusMessage += `✗ Not found in PATH\n`;
-  }
-
-  if (installedVersion !== bundledVersion) {
-    statusMessage += "\n⚠ Version mismatch detected";
-    const action = await vscode.window.showWarningMessage(
-      statusMessage,
-      "Reinstall",
-      "Close",
-    );
-    if (action === "Reinstall") {
-      await installCliCommand(context);
-    }
-  } else {
-    vscode.window.showInformationMessage(statusMessage, "Close");
-  }
 }
 
 export function deactivate() {
