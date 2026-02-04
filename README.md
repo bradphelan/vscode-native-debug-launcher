@@ -6,11 +6,11 @@ Solves https://github.com/microsoft/vscode/issues/10979
 
 ## Purpose
 
-This extension enables debugging any executable directly from the command line by creating a VS Code URL handler that selects a debugger by platform (MSVC on Windows, GDB on Linux, LLDB on macOS) and launches the debug session.
+This extension enables debugging any executable directly from the command line by creating a VS Code URL handler that selects a debugger and launches the debug session.
 
 **No configuration needed.** Just run:
 
-```bash
+```powershell
 code-dbg -- myapp.exe arg1 arg2
 ```
 
@@ -26,8 +26,8 @@ The extension parses the debug URL, validates the workspace and executable, and 
 
 The extension will:
 
-- Auto-install the CLI script to `%APPDATA%\code-dbg` (Windows) or `~/.local/bin` (macOS/Linux)
-- Update your PATH environment variable (Windows only)
+- Auto-install the CLI script to `%APPDATA%\code-dbg` (Windows)
+- Update your PATH environment variable
 - Notify you when installation completes
 - Auto-upgrade the CLI when you update the extension
 
@@ -44,7 +44,7 @@ See the [Build and Install](#build-and-install-from-source) section below for ma
 
 **Basic:**
 
-```bash
+```powershell
 code-dbg [OPTIONS] -- <executable> [arguments...]
 ```
 
@@ -86,8 +86,7 @@ code-dbg --cwd=/tmp -- ./app.exe -- --my-flag
 3. Executable must exist and be accessible
 4. Appropriate debugger must be installed:
    - Windows: MSVC debugger (Visual Studio or Build Tools)
-   - Linux: GDB (`sudo apt-get install gdb`)
-   - macOS: Xcode Command Line Tools (`xcode-select --install`)
+   - (No other platform tested at the moment)
 
 ## Build and Install from Source
 
@@ -147,6 +146,36 @@ This keeps VS Code open after the test completes so you can inspect the debugger
 .\scripts\test.ps1 -NoBuild
 ```
 
+## Publish
+
+### Marketplace (VSCE)
+
+1. Login with your publisher account:
+
+```powershell
+vsce login bradphelan
+```
+
+2. Publish the extension:
+
+```powershell
+vsce publish
+```
+
+**Optional:**
+
+- Publish a specific version (matches `package.json`):
+
+```powershell
+vsce publish 0.1.32
+```
+
+- Bump and publish a version:
+
+```powershell
+vsce publish patch
+```
+
 ### Manual Installation (Development)
 
 ### Step 1: Install the Extension
@@ -176,7 +205,7 @@ and installs the VSIX into VS Code and VS Code Insiders when their CLI commands 
 
 ### Step 3: Verify Installation
 
-```bash
+```powershell
 code-dbg --help
 ```
 
