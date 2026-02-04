@@ -102,6 +102,7 @@ For testing and development, use:
 ```
 
 This:
+
 - Bumps the patch version (0.1.37 → 0.1.38)
 - Generates CHANGELOG.md from commits
 - Compiles TypeScript
@@ -109,6 +110,7 @@ This:
 - **Does NOT** create git tags or commit
 
 Use this for:
+
 - Local testing before committing changes
 - CI/CD pipelines
 - Pre-release verification
@@ -122,6 +124,7 @@ When ready to publish a new version:
 ```
 
 This performs pre-flight checks, then:
+
 - Bumps the patch version
 - Generates CHANGELOG.md
 - Compiles TypeScript
@@ -131,6 +134,7 @@ This performs pre-flight checks, then:
 - Packages VSIX file
 
 Requirements:
+
 - Working directory must be clean (no uncommitted changes)
 - Git must be configured (`user.name`, `user.email`)
 - Remote `origin` must be configured

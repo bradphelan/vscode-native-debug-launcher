@@ -35,7 +35,7 @@ Write-Host ""
 # Pre-release validation (for --Release mode)
 if ($Release) {
     Write-Host "Validating release prerequisites..." -ForegroundColor Yellow
-    
+
     # Check working directory is clean
     $gitStatus = git status --porcelain 2>$null
     if ($gitStatus) {
@@ -47,7 +47,7 @@ if ($Release) {
         exit 1
     }
     Write-Host "✓ Working directory is clean" -ForegroundColor Green
-    
+
     # Check git is configured
     $gitName = git config user.name 2>$null
     $gitEmail = git config user.email 2>$null
@@ -58,7 +58,7 @@ if ($Release) {
         exit 1
     }
     Write-Host "✓ Git configured ($gitName <$gitEmail>)" -ForegroundColor Green
-    
+
     # Check that origin remote exists
     $remoteOrigin = git remote get-url origin 2>$null
     if (-not $remoteOrigin) {
@@ -186,32 +186,32 @@ Write-Host ""
 # Release workflow: commit version/changelog and create tag
 if ($Release) {
     Write-Host "Preparing release..." -ForegroundColor Yellow
-    
+
     # Check if version files changed
     $gitDiff = git diff --name-only 2>$null
-    
+
     if ($gitDiff -match "package.json|CHANGELOG.md") {
         Write-Host "Committing version bump and changelog..." -ForegroundColor Yellow
         Push-Location $projectRoot
-        
+
         # Get the new version
         $packageJson = Get-Content "package.json" | ConvertFrom-Json
         $version = $packageJson.version
-        
+
         git add package.json package-lock.json CHANGELOG.md 2>$null
         git commit -m "chore: bump version to $version and update changelog" --quiet 2>$null
-        
+
         if ($LASTEXITCODE -ne 0) {
             Write-Host "ERROR: Failed to commit release changes" -ForegroundColor Red
             Pop-Location
             exit 1
         }
         Write-Host "✓ Release commit created (v$version)" -ForegroundColor Green
-        
+
         # Create annotated tag
         $tagDate = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $tagMessage = "Release version $version`n`nBuilt: $tagDate"
-        
+
         git tag -a "v$version" -m $tagMessage 2>$null
         if ($LASTEXITCODE -ne 0) {
             Write-Host "ERROR: Failed to create git tag" -ForegroundColor Red
@@ -219,19 +219,21 @@ if ($Release) {
             exit 1
         }
         Write-Host "✓ Git tag created: v$version" -ForegroundColor Green
-        
+
         # Push tag to remote
         Write-Host "Pushing release to remote..." -ForegroundColor Yellow
         git push origin "v$version" 2>$null
         if ($LASTEXITCODE -ne 0) {
             Write-Host "WARNING: Failed to push tag to remote" -ForegroundColor Yellow
             Write-Host "Push manually with: git push origin v$version" -ForegroundColor Yellow
-        } else {
+        }
+        else {
             Write-Host "✓ Tag pushed to origin" -ForegroundColor Green
         }
-        
+
         Pop-Location
-    } else {
+    }
+    else {
         Write-Host "No version changes to commit" -ForegroundColor Gray
     }
 }
@@ -269,7 +271,8 @@ if ($Release) {
     Write-Host "Next steps:" -ForegroundColor Yellow
     Write-Host "  1. Publish to marketplace: vsce publish" -ForegroundColor White
     Write-Host "  2. Verify release on GitHub" -ForegroundColor White
-} else {
+}
+else {
     Write-Host ""
     Write-Host "Next steps (dev mode):" -ForegroundColor Yellow
     Write-Host "  1. Test locally: code --install-extension $($vsixFile.Name)" -ForegroundColor White
