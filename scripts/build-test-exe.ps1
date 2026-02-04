@@ -20,7 +20,7 @@ Write-Host ""
 # Create build directory
 if (-not (Test-Path $buildDir)) {
     New-Item -ItemType Directory -Path $buildDir -Force | Out-Null
-    Write-Host "✓ Created build directory: $buildDir" -ForegroundColor Green
+    Write-Host "? Created build directory: $buildDir" -ForegroundColor Green
 }
 
 # Check if source file exists
@@ -65,7 +65,7 @@ if (!$clExe) {
     exit 1
 }
 
-Write-Host "✓ Found MSVC at: $clExe" -ForegroundColor Green
+Write-Host "? Found MSVC at: $clExe" -ForegroundColor Green
 Write-Host ""
 
 # Compile
@@ -104,13 +104,13 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-Write-Host "✓ Compilation successful" -ForegroundColor Green
+Write-Host "? Compilation successful" -ForegroundColor Green
 Write-Host ""
 
 # Verify output
 if (Test-Path $output) {
     $fileSize = (Get-Item $output).Length
-    Write-Host "✓ Executable created: $output" -ForegroundColor Green
+    Write-Host "? Executable created: $output" -ForegroundColor Green
     Write-Host "  Size: $($fileSize / 1KB)KB" -ForegroundColor Green
 }
 else {

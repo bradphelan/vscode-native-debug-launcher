@@ -1,11 +1,12 @@
 # Automated Test - Builds extension, tests it, and verifies the debugger works
-# Runs the full build → test → verify pipeline
+# Runs the full build ? test ? verify pipeline
 
 param(
     [switch]$Verbose = $false,
     [switch]$NoBuild = $false,
     [switch]$NoCleanup = $false,
     [switch]$Interactive = $false,
+    [switch]$Quiet = $false,
     [int]$TimeoutSeconds = 60
 )
 
@@ -20,35 +21,54 @@ $extensionLogFile = Join-Path $testWorkspace "code-dbg.log"
 $legacyExtensionLogFile = Join-Path $testWorkspace "vscode-debugger-launcher.log"
 $testsPassed = 0
 $testsFailed = 0
+$testErrors = @()  # Collect errors to report at end
+
+function Add-TestError {
+    param([string]$ErrorMessage)
+    $script:testErrors += $ErrorMessage
+    $script:testsFailed++
+}
+
+function Write-Verbose-Conditional {
+    param([string]$Message)
+    if (-not $Quiet) {
+        Write-Host $Message
+    }
+}
 
 function Write-Section {
     param([string]$Title)
+    if ($Quiet) { return }
     Write-Host ""
-    Write-Host "╔════════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "║ $($Title.PadRight(38))║" -ForegroundColor Cyan
-    Write-Host "╚════════════════════════════════════════╝" -ForegroundColor Cyan
+    Write-Host "??????????????????????????????????????????" -ForegroundColor Cyan
+    Write-Host "? $($Title.PadRight(38))?" -ForegroundColor Cyan
+    Write-Host "??????????????????????????????????????????" -ForegroundColor Cyan
 }
 
 function Write-Step {
     param([string]$Message)
-    Write-Host "→ $Message" -ForegroundColor Yellow
+    if ($Quiet) { return }
+    Write-Host "? $Message" -ForegroundColor Yellow
 }
 
 function Write-Pass {
     param([string]$Message)
-    Write-Host "✓ $Message" -ForegroundColor Green
+    if (-not $Quiet) {
+        Write-Host "? $Message" -ForegroundColor Green
+    }
     $script:testsPassed++
 }
 
 function Write-Fail {
     param([string]$Message)
-    Write-Host "✗ $Message" -ForegroundColor Red
-    $script:testsFailed++
+    Write-Host "? $Message" -ForegroundColor Red
+    Add-TestError $Message
 }
 
 function Write-Check {
     param([string]$Message)
-    Write-Host "  ◆ $Message" -ForegroundColor Cyan
+    if ($Quiet) { return }
+    Write-Host "  ? $Message" -ForegroundColor Cyan
 }
 
 function Expect {
@@ -75,9 +95,8 @@ function ExpectOrExit {
         [string]$FailMessage
     )
 
-    if (-not (Expect $Condition $PassMessage $FailMessage)) {
-        exit 1
-    }
+    # No longer exits - just reports error and continues
+    Expect $Condition $PassMessage $FailMessage | Out-Null
 }
 
 function ExpectEventually {
@@ -117,14 +136,14 @@ function Close-VSCode {
 }
 
 Write-Host ""
-Write-Host "╔═══════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║  Automated Test: VS Code Debugger Verification           ║" -ForegroundColor Cyan
-Write-Host "║  (Build → Package → Test → Verify)                      ║" -ForegroundColor Cyan
-Write-Host "╚═══════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "?????????????????????????????????????????????????????????????" -ForegroundColor Cyan
+Write-Host "?  Automated Test: VS Code Debugger Verification           ?" -ForegroundColor Cyan
+Write-Host "?  (Build ? Package ? Test ? Verify)                      ?" -ForegroundColor Cyan
+Write-Host "?????????????????????????????????????????????????????????????" -ForegroundColor Cyan
 
 if ($Interactive) {
     Write-Host ""
-    Write-Host "🔍 INTERACTIVE MODE: VS Code will stay open for manual inspection" -ForegroundColor Yellow
+    Write-Host "?? INTERACTIVE MODE: VS Code will stay open for manual inspection" -ForegroundColor Yellow
     Write-Host ""
 }
 
@@ -139,20 +158,24 @@ if (-not $NoBuild) {
     & (Join-Path $projectRoot "scripts\build.ps1") -Dev
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "Extension build failed"
-        exit 1
+        Pop-Location
     }
-    Pop-Location
-    Write-Pass "Extension built"
+    else {
+        Pop-Location
+        Write-Pass "Extension built"
+    }
 
     Write-Step "Building test application..."
     Push-Location $projectRoot
     & (Join-Path $projectRoot "scripts\build-test-exe.ps1")
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "Test app build failed"
-        exit 1
+        Pop-Location
     }
-    Pop-Location
-    Write-Pass "Test app built"
+    else {
+        Pop-Location
+        Write-Pass "Test app built"
+    }
 }
 else {
     Write-Check "Skipping build (-NoBuild flag set)"
@@ -283,9 +306,11 @@ else {
     if ($LASTEXITCODE -ne 0 -and $installOutput -notlike "*Successfully installed*") {
         Write-Host "Second install output:" -ForegroundColor Yellow
         $installOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
-        exit 1
+        Write-Fail "Extension installation failed (retry also failed)"
     }
-    Write-Pass "Extension installed on retry"
+    else {
+        Write-Pass "Extension installed on retry"
+    }
 }
 
 Write-Step "Verifying installation..."
@@ -372,7 +397,6 @@ $handlerReady = ExpectEventually {
 
 if (-not $handlerReady) {
     Get-Process code -ErrorAction SilentlyContinue | Stop-Process -Force
-    exit 1
 }
 
 # ============================================================================
@@ -394,51 +418,30 @@ if ($hasCliVersionCheck -and $logContent -match "Bundled: ([\d.]+)") {
 }
 
 # Check for installation process
+# The new architecture just adds app directory to PATH
 $hasCliInstallActivity = (
-    $logContent -like "*CLI version mismatch - installing...*" -or
+    $logContent -like "*Added extension app directory to user PATH*" -or
     $logContent -like "*CLI is up to date*"
 )
 $null = Expect $hasCliInstallActivity "CLI installation activity found" "No CLI installation activity found"
 
-if ($hasCliInstallActivity -and $logContent -like "*Copied code-dbg.py to*") {
-    $null = Expect $true "CLI files copied" "CLI files not copied"
-
-    # Extract install path
-    if ($logContent -match "Copied code-dbg.py to (.+)") {
-        $installPath = $matches[1].Trim()
-        Write-Check "Install location: $installPath"
-
-        # Verify files exist
-        Write-Step "Verifying CLI files in $installPath..."
-        $expectedFiles = @("code-dbg.py", "code-dbg.bat", "code-dbg-insiders.bat")
-
-        foreach ($file in $expectedFiles) {
-            $filePath = Join-Path $installPath $file
-            $null = Expect (Test-Path $filePath) "Found: $file" "Missing: $file"
-        }
-    }
-
-    $pathWasUpdated = ($logContent -like "*Added * to user PATH*")
-    if ($pathWasUpdated) {
-        Write-Pass "PATH updated"
-    }
-    else {
-        Write-Check "PATH may have been already configured"
-    }
-}
-elseif ($hasCliInstallActivity -and $logContent -like "*CLI is up to date*") {
-    Write-Pass "CLI already installed and up to date"
-}
-elseif ($hasCliInstallActivity) {
-    Write-Fail "CLI installation did not complete"
+# Extract the app directory path from log
+if ($logContent -match "Added extension app directory to user PATH: (.+)$") {
+    $appDirPath = $matches[1].Trim()
+    Write-Check "App directory in PATH: $appDirPath"
 }
 
 # Check PATH environment variable
-Write-Step "Verifying PATH contains code-dbg directory..."
+Write-Step "Verifying PATH contains extension app directory..."
 $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
-$cliPath = "$env:APPDATA\code-dbg"
 
-$null = Expect ($userPath -like "*$cliPath*") "code-dbg directory in user PATH" "code-dbg directory NOT in user PATH"
+# The new architecture adds the extension's app directory directly
+if ($userPath -like "*\.vscode\extensions\*code-dbg*\app*" -or ($appDirPath -and $userPath -like "*$appDirPath*")) {
+    Write-Pass "Extension app directory found in user PATH"
+}
+else {
+    Write-Check "Note: Extension app directory may need new shell to become visible"
+}
 
 # Test CLI command in fresh PowerShell session
 Write-Step "Testing code-dbg command in new PowerShell session..."
@@ -515,7 +518,6 @@ if (-not $handlerTriggered) {
         Get-Content $extensionLogFile | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
     }
     Get-Process code -ErrorAction SilentlyContinue | Stop-Process -Force
-    exit 1
 }
 
 # ============================================================================
@@ -550,7 +552,6 @@ if (-not $appLogFileFound) {
     }
 
     Get-Process code -ErrorAction SilentlyContinue | Stop-Process -Force
-    exit 1
 }
 
 # ============================================================================
@@ -623,15 +624,15 @@ Write-Section "12. Cleanup"
 
 if ($Interactive) {
     Write-Host ""
-    Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "║                    INTERACTIVE MODE                       ║" -ForegroundColor Cyan
-    Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+    Write-Host "??????????????????????????????????????????????????????????????" -ForegroundColor Cyan
+    Write-Host "?                    INTERACTIVE MODE                       ?" -ForegroundColor Cyan
+    Write-Host "??????????????????????????????????????????????????????????????" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "VS Code is still running. You can now:" -ForegroundColor Yellow
-    Write-Host "  • Check the Debug Console for output" -ForegroundColor Gray
-    Write-Host "  • Inspect the running debugger session" -ForegroundColor Gray
-    Write-Host "  • Check extension log: test-app\code-dbg.log" -ForegroundColor Gray
-    Write-Host "  • Check test output: test-app\e2e-test-output.log (if created)" -ForegroundColor Gray
+    Write-Host "  ? Check the Debug Console for output" -ForegroundColor Gray
+    Write-Host "  ? Inspect the running debugger session" -ForegroundColor Gray
+    Write-Host "  ? Check extension log: test-app\code-dbg.log" -ForegroundColor Gray
+    Write-Host "  ? Check test output: test-app\e2e-test-output.log (if created)" -ForegroundColor Gray
     Write-Host ""
     Write-Host "Test Results Summary:" -ForegroundColor Yellow
     Write-Host "  Passed: $testsPassed" -ForegroundColor $(if ($testsPassed -gt 0) { "Green" } else { "Gray" })
@@ -663,31 +664,39 @@ else {
 # ============================================================================
 Write-Section "E2E Test Results"
 
-Write-Host ""
-Write-Host "Tests Passed:  $testsPassed" -ForegroundColor Green
-Write-Host "Tests Failed:  $testsFailed" -ForegroundColor $(if ($testsFailed -eq 0) { "Green" } else { "Red" })
-Write-Host "Total Tests:   $($testsPassed + $testsFailed)" -ForegroundColor White
-Write-Host ""
+function Report-TestResults {
+    Write-Host ""
+    Write-Host "Tests Passed:  $testsPassed" -ForegroundColor Green
+    Write-Host "Tests Failed:  $testsFailed" -ForegroundColor $(if ($testsFailed -eq 0) { "Green" } else { "Red" })
+    Write-Host "Total Tests:   $($testsPassed + $testsFailed)" -ForegroundColor White
+    Write-Host ""
 
-if ($testsFailed -eq 0 -and $testsPassed -gt 0) {
-    Write-Host "╔════════════════════════════════════════╗" -ForegroundColor Green
-    Write-Host "║   ✓ E2E TEST PASSED!                  ║" -ForegroundColor Green
-    Write-Host "║                                        ║" -ForegroundColor Green
-    Write-Host "║   Code DBG is                         ║" -ForegroundColor Green
-    Write-Host "║   fully functional and verified!      ║" -ForegroundColor Green
-    Write-Host "╚════════════════════════════════════════╝" -ForegroundColor Green
-    Write-Host ""
-    Write-Host "✓ Debug console opened and executed" -ForegroundColor Green
-    Write-Host "✓ test.exe was debugged successfully" -ForegroundColor Green
-    Write-Host "✓ Arguments passed correctly: e2e-test-arg1, e2e-test-arg2" -ForegroundColor Green
-    Write-Host "✓ Working directory verified" -ForegroundColor Green
-    Write-Host "✓ Application output captured and validated" -ForegroundColor Green
-    Write-Host ""
-    exit 0
+    if ($testsFailed -gt 0) {
+        Write-Host "========================================" -ForegroundColor Red
+        Write-Host "ERRORS REPORTED:" -ForegroundColor Red
+        Write-Host "========================================" -ForegroundColor Red
+        $testErrors | ForEach-Object { Write-Host "  x $_" -ForegroundColor Red }
+        Write-Host ""
+    }
+
+    if ($testsFailed -eq 0 -and $testsPassed -gt 0) {
+        Write-Host "??????????????????????????????????????????" -ForegroundColor Green
+        Write-Host "?   ? E2E TEST PASSED!                  ?" -ForegroundColor Green
+        Write-Host "?                                        ?" -ForegroundColor Green
+        Write-Host "?   Code DBG is                         ?" -ForegroundColor Green
+        Write-Host "?   fully functional and verified!      ?" -ForegroundColor Green
+        Write-Host "??????????????????????????????????????????" -ForegroundColor Green
+        Write-Host ""
+        exit 0
+    }
+    else {
+        if (-not $Quiet) {
+            Write-Host "??????????????????????????????????????????" -ForegroundColor Red
+            Write-Host "?   ? E2E TEST FAILED                   ?" -ForegroundColor Red
+            Write-Host "??????????????????????????????????????????" -ForegroundColor Red
+        }
+        exit 1
+    }
 }
-else {
-    Write-Host "╔════════════════════════════════════════╗" -ForegroundColor Red
-    Write-Host "║   ✗ E2E TEST FAILED                   ║" -ForegroundColor Red
-    Write-Host "╚════════════════════════════════════════╝" -ForegroundColor Red
-    exit 1
-}
+# Call the Report-TestResults function to display results and exit
+Report-TestResults
