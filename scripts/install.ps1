@@ -18,17 +18,17 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "Please install Python from https://www.python.org/" -ForegroundColor Red
     exit 1
 }
-Write-Host "✓ Python $pythonCheck found" -ForegroundColor Green
+Write-Host "? Python $pythonCheck found" -ForegroundColor Green
 Write-Host ""
 
 # Create installation directory
 Write-Host "Creating installation directory..." -ForegroundColor Yellow
 if (-not (Test-Path $InstallPath)) {
     New-Item -ItemType Directory -Path $InstallPath -Force | Out-Null
-    Write-Host "✓ Created $InstallPath" -ForegroundColor Green
+    Write-Host "? Created $InstallPath" -ForegroundColor Green
 }
 else {
-    Write-Host "✓ Directory already exists: $InstallPath" -ForegroundColor Green
+    Write-Host "? Directory already exists: $InstallPath" -ForegroundColor Green
 }
 
 Write-Host ""
@@ -44,7 +44,7 @@ if (-not (Test-Path $pythonScript)) {
 }
 
 Copy-Item -Path $pythonScript -Destination "$InstallPath\code-dbg.py" -Force
-Write-Host "✓ Copied code-dbg.py to $InstallPath" -ForegroundColor Green
+Write-Host "? Copied code-dbg.py to $InstallPath" -ForegroundColor Green
 
 Write-Host ""
 
@@ -56,7 +56,7 @@ python "%~dp0code-dbg.py" %*
 "@
 
 Set-Content -Path $batchFile -Value $batchContent -Encoding ASCII
-Write-Host "✓ Created code-dbg.bat wrapper" -ForegroundColor Green
+Write-Host "? Created code-dbg.bat wrapper" -ForegroundColor Green
 
 $insidersBatchFile = "$InstallPath\code-dbg-insiders.bat"
 $insidersBatchContent = @"
@@ -65,7 +65,7 @@ python "%~dp0code-dbg.py" --insiders %*
 "@
 
 Set-Content -Path $insidersBatchFile -Value $insidersBatchContent -Encoding ASCII
-Write-Host "✓ Created code-dbg-insiders.bat wrapper" -ForegroundColor Green
+Write-Host "? Created code-dbg-insiders.bat wrapper" -ForegroundColor Green
 
 Write-Host ""
 
@@ -76,11 +76,11 @@ $userPath = [Environment]::GetEnvironmentVariable('PATH', [EnvironmentVariableTa
 if ($userPath -notlike "*$InstallPath*") {
     $newPath = "$userPath;$InstallPath"
     [Environment]::SetEnvironmentVariable('PATH', $newPath, [EnvironmentVariableTarget]::User)
-    Write-Host "✓ Added $InstallPath to user PATH" -ForegroundColor Green
+    Write-Host "? Added $InstallPath to user PATH" -ForegroundColor Green
     Write-Host "  (Note: Restart your terminal to apply changes)" -ForegroundColor Yellow
 }
 else {
-    Write-Host "✓ $InstallPath is already in PATH" -ForegroundColor Green
+    Write-Host "? $InstallPath is already in PATH" -ForegroundColor Green
 }
 
 Write-Host ""
@@ -88,7 +88,7 @@ Write-Host ""
 # Install VSIX into VS Code and VS Code Insiders if available
 $vsixFile = Get-ChildItem "$projectRoot\*.vsix" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($null -eq $vsixFile) {
-    Write-Host "⚠ No VSIX found in project root. Build first with .\scripts\build.ps1" -ForegroundColor Yellow
+    Write-Host "? No VSIX found in project root. Build first with .\scripts\build.ps1" -ForegroundColor Yellow
 }
 else {
     Write-Host "Installing extension from $($vsixFile.Name)..." -ForegroundColor Yellow
@@ -97,28 +97,28 @@ else {
     if ($null -ne $codeCommand) {
         & $codeCommand.Source --install-extension $vsixFile.FullName
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "✓ Installed extension into VS Code" -ForegroundColor Green
+            Write-Host "? Installed extension into VS Code" -ForegroundColor Green
         }
         else {
-            Write-Host "⚠ Failed to install extension into VS Code" -ForegroundColor Yellow
+            Write-Host "? Failed to install extension into VS Code" -ForegroundColor Yellow
         }
     }
     else {
-        Write-Host "⚠ 'code' command not found; skipping VS Code install" -ForegroundColor Yellow
+        Write-Host "? 'code' command not found; skipping VS Code install" -ForegroundColor Yellow
     }
 
     $codeInsidersCommand = Get-Command code-insiders -ErrorAction SilentlyContinue
     if ($null -ne $codeInsidersCommand) {
         & $codeInsidersCommand.Source --install-extension $vsixFile.FullName
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "✓ Installed extension into VS Code Insiders" -ForegroundColor Green
+            Write-Host "? Installed extension into VS Code Insiders" -ForegroundColor Green
         }
         else {
-            Write-Host "⚠ Failed to install extension into VS Code Insiders" -ForegroundColor Yellow
+            Write-Host "? Failed to install extension into VS Code Insiders" -ForegroundColor Yellow
         }
     }
     else {
-        Write-Host "⚠ 'code-insiders' command not found; skipping VS Code Insiders install" -ForegroundColor Yellow
+        Write-Host "? 'code-insiders' command not found; skipping VS Code Insiders install" -ForegroundColor Yellow
     }
 }
 
@@ -128,18 +128,18 @@ Write-Host ""
 Write-Host "Testing installation..." -ForegroundColor Yellow
 $testOutput = & "$batchFile" --help 2>&1
 if ($testOutput -like "*code-dbg*") {
-    Write-Host "✓ code-dbg is working correctly" -ForegroundColor Green
+    Write-Host "? code-dbg is working correctly" -ForegroundColor Green
 }
 else {
-    Write-Host "⚠ Could not verify installation" -ForegroundColor Yellow
+    Write-Host "? Could not verify installation" -ForegroundColor Yellow
 }
 
 $insidersTestOutput = & "$insidersBatchFile" --help 2>&1
 if ($insidersTestOutput -like "*code-dbg*") {
-    Write-Host "✓ code-dbg-insiders is working correctly" -ForegroundColor Green
+    Write-Host "? code-dbg-insiders is working correctly" -ForegroundColor Green
 }
 else {
-    Write-Host "⚠ Could not verify code-dbg-insiders" -ForegroundColor Yellow
+    Write-Host "? Could not verify code-dbg-insiders" -ForegroundColor Yellow
 }
 
 Write-Host ""

@@ -46,7 +46,7 @@ if ($Release) {
         Write-Host $gitStatus -ForegroundColor Gray
         exit 1
     }
-    Write-Host "✓ Working directory is clean" -ForegroundColor Green
+    Write-Host "? Working directory is clean" -ForegroundColor Green
 
     # Check git is configured
     $gitName = git config user.name 2>$null
@@ -57,7 +57,7 @@ if ($Release) {
         Write-Host "Run: git config user.email 'your.email@example.com'" -ForegroundColor Yellow
         exit 1
     }
-    Write-Host "✓ Git configured ($gitName <$gitEmail>)" -ForegroundColor Green
+    Write-Host "? Git configured ($gitName <$gitEmail>)" -ForegroundColor Green
 
     # Check that origin remote exists
     $remoteOrigin = git remote get-url origin 2>$null
@@ -65,7 +65,7 @@ if ($Release) {
         Write-Host "ERROR: No 'origin' remote configured" -ForegroundColor Red
         exit 1
     }
-    Write-Host "✓ Remote configured: $remoteOrigin" -ForegroundColor Green
+    Write-Host "? Remote configured: $remoteOrigin" -ForegroundColor Green
 }
 
 Write-Host ""
@@ -76,14 +76,14 @@ if ($null -eq $nodeCheck) {
     Write-Host "Please install Node.js from https://nodejs.org/" -ForegroundColor Red
     exit 1
 }
-Write-Host "✓ Node.js $nodeCheck found" -ForegroundColor Green
+Write-Host "? Node.js $nodeCheck found" -ForegroundColor Green
 
 $npmCheck = npm --version 2>$null
 if ($null -eq $npmCheck) {
     Write-Host "ERROR: npm is not installed" -ForegroundColor Red
     exit 1
 }
-Write-Host "✓ npm $npmCheck found" -ForegroundColor Green
+Write-Host "? npm $npmCheck found" -ForegroundColor Green
 
 # Check if VSCE is installed globally
 $vsceCheck = vsce --version 2>$null
@@ -94,10 +94,10 @@ if ($null -eq $vsceCheck) {
         Write-Host "ERROR: Failed to install @vscode/vsce" -ForegroundColor Red
         exit 1
     }
-    Write-Host "✓ @vscode/vsce installed" -ForegroundColor Green
+    Write-Host "? @vscode/vsce installed" -ForegroundColor Green
 }
 else {
-    Write-Host "✓ vsce $vsceCheck found" -ForegroundColor Green
+    Write-Host "? vsce $vsceCheck found" -ForegroundColor Green
 }
 
 Write-Host ""
@@ -107,11 +107,11 @@ if (-not $NoClean) {
     Write-Host "Cleaning previous builds..." -ForegroundColor Yellow
     if (Test-Path "$projectRoot\out") {
         Remove-Item -Recurse -Force "$projectRoot\out" | Out-Null
-        Write-Host "✓ Cleaned ./out" -ForegroundColor Green
+        Write-Host "? Cleaned ./out" -ForegroundColor Green
     }
     if (Test-Path "$projectRoot\*.vsix") {
         Remove-Item -Force "$projectRoot\*.vsix" | Out-Null
-        Write-Host "✓ Cleaned *.vsix files" -ForegroundColor Green
+        Write-Host "? Cleaned *.vsix files" -ForegroundColor Green
     }
 }
 
@@ -120,13 +120,13 @@ Write-Host ""
 # Generate version info
 Write-Host "Generating version info..." -ForegroundColor Yellow
 Push-Location $projectRoot
-& (Join-Path $projectRoot "scripts\generate-version.ps1")
+& (Join-Path $projectRoot "scripts\generate-version.ps1") -Dev:$Dev
 Pop-Location
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to generate version info" -ForegroundColor Red
     exit 1
 }
-Write-Host "✓ Version info generated" -ForegroundColor Green
+Write-Host "? Version info generated" -ForegroundColor Green
 
 Write-Host ""
 
@@ -139,7 +139,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to generate changelog" -ForegroundColor Red
     exit 1
 }
-Write-Host "✓ Changelog generated" -ForegroundColor Green
+Write-Host "? Changelog generated" -ForegroundColor Green
 
 Write-Host ""
 
@@ -152,7 +152,7 @@ if ($LASTEXITCODE -ne 0) {
     Pop-Location
     exit 1
 }
-Write-Host "✓ Dependencies installed" -ForegroundColor Green
+Write-Host "? Dependencies installed" -ForegroundColor Green
 Pop-Location
 
 Write-Host ""
@@ -173,7 +173,7 @@ else {
         Pop-Location
         exit 1
     }
-    Write-Host "✓ TypeScript compiled successfully" -ForegroundColor Green
+    Write-Host "? TypeScript compiled successfully" -ForegroundColor Green
     Pop-Location
 }
 
@@ -206,7 +206,7 @@ if ($Release) {
             Pop-Location
             exit 1
         }
-        Write-Host "✓ Release commit created (v$version)" -ForegroundColor Green
+        Write-Host "? Release commit created (v$version)" -ForegroundColor Green
 
         # Create annotated tag
         $tagDate = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -218,7 +218,7 @@ if ($Release) {
             Pop-Location
             exit 1
         }
-        Write-Host "✓ Git tag created: v$version" -ForegroundColor Green
+        Write-Host "? Git tag created: v$version" -ForegroundColor Green
 
         # Push tag to remote
         Write-Host "Pushing release to remote..." -ForegroundColor Yellow
@@ -228,7 +228,7 @@ if ($Release) {
             Write-Host "Push manually with: git push origin v$version" -ForegroundColor Yellow
         }
         else {
-            Write-Host "✓ Tag pushed to origin" -ForegroundColor Green
+            Write-Host "? Tag pushed to origin" -ForegroundColor Green
         }
 
         Pop-Location
@@ -249,7 +249,7 @@ if ($LASTEXITCODE -ne 0) {
     Pop-Location
     exit 1
 }
-Write-Host "✓ VSIX package created successfully" -ForegroundColor Green
+Write-Host "? VSIX package created successfully" -ForegroundColor Green
 
 # Get the generated vsix filename
 $vsixFile = Get-ChildItem "$projectRoot\*.vsix" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -280,3 +280,4 @@ else {
 }
 
 Write-Host ""
+
