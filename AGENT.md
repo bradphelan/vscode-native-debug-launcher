@@ -165,3 +165,8 @@ After release, the tag is pushed to GitHub and CHANGELOG.md reflects only commit
 - `src/extension.ts` – VS Code extension logic
 - `README.md` – User documentation, must stay synchronized
 - `scripts/test.ps1` – E2E test, your verification tool
+
+## Agent information
+
+- If you are on Window then always use powershell to run shell commands
+- No unicode in source files. Pure ASCII

@@ -146,6 +146,123 @@ This keeps VS Code open after the test completes so you can inspect the debugger
 .\scripts\test.ps1 -NoBuild
 ```
 
+## Development
+
+### Setup
+
+1. **Clone and install dependencies:**
+
+```powershell
+npm install
+```
+
+2. **Configure your Python environment** (optional, for reference only):
+
+The CLI (`code-dbg`) is implemented in PowerShell with no external dependencies. All scripts use native PowerShell operators for reliability.
+
+### Development Workflow
+
+**Build with pre-release versioning:**
+
+```powershell
+.\scripts\build.ps1 -Dev
+```
+
+This creates a `.vsix` file with a pre-release version number like `0.1.42-dev.20260204.750` in `src/version.json`, while keeping `package.json` unchanged. This allows development builds to coexist with release versions.
+
+**Build for release:**
+
+```powershell
+.\scripts\build.ps1
+```
+
+This increments the patch version in `package.json` and generates the final version number for the `.vsix` package.
+
+**Run tests during development:**
+
+```powershell
+.\scripts\test.ps1
+```
+
+Tests automatically build the extension and test app, launch VS Code with the debugger, and validate the complete flow.
+
+### Key Architecture
+
+**CLI: `app/code-dbg.ps1`**
+
+Pure PowerShell script that runs on Windows (and Unix with PowerShell Core). Takes executable and arguments, constructs a base64-encoded debug payload, and launches VS Code with a custom URL scheme:
+
+```powershell
+vscode://bradphelan.code-dbg/launch?payload={base64_json}
+```
+
+**Extension: `src/extension.ts`**
+
+VS Code extension that:
+
+- Registers the `vscode://bradphelan.code-dbg/` URL handler
+- Listens for launch requests via `vscode.window.registerUriHandler()`
+- Parses and validates the payload
+- Selects the appropriate debugger (cppvsdbg on Windows)
+- Creates a debug configuration and launches the debug session
+
+**Version Generation: `scripts/generate-version.ps1`**
+
+Generates semantic versioning with pre-release suffixes for development builds:
+
+- Dev mode (`-Dev` flag): Appends `-dev.{YYYYMMDD}.{NNN}` to version, skips updating `package.json`
+- Release mode (no flag): Increments patch version in `package.json` and generates final version number
+
+### Debugging the Extension
+
+1. **In VS Code:**
+
+```powershell
+code .
+```
+
+2. **Press `F5`** to start the extension in debug mode (launches a new VS Code window)
+
+3. **Set breakpoints** in `src/extension.ts` and they'll trigger in the debug instance
+
+4. **Test the CLI:**
+
+```powershell
+.\app\code-dbg.ps1 -- cmd.exe /c "echo Hello"
+```
+
+This prints the debug URL without launching VS Code, letting you inspect the payload.
+
+### Project Structure Reference
+
+| File                           | Purpose                                        |
+| ------------------------------ | ---------------------------------------------- |
+| `src/extension.ts`             | Main VS Code extension code                    |
+| `src/version.json`             | Generated version info (Windows build only)    |
+| `app/code-dbg.ps1`             | PowerShell CLI tool for launching the debugger |
+| `scripts/build.ps1`            | Main build script                              |
+| `scripts/generate-version.ps1` | Semantic versioning with pre-release support   |
+| `scripts/install.ps1`          | Manual CLI installation script                 |
+| `scripts/test.ps1`             | Automated test suite                           |
+| `scripts/build-test-exe.ps1`   | Helper to compile test application             |
+| `test-app/hello.cpp`           | Simple C++ test application                    |
+| `package.json`                 | Extension manifest and dependencies            |
+| `tsconfig.json`                | TypeScript compiler configuration              |
+
+### PATH Management
+
+When the CLI is installed, the extension adds `%APPDATA%\code-dbg` to your user PATH using PowerShell:
+
+```powershell
+$pathArray = $path -split ';' | Where-Object { $_ }
+if ($installDir -notin $pathArray) {
+  $pathArray += $installDir
+  [Environment]::SetEnvironmentVariable('PATH', ($pathArray -join ';'), 'User')
+}
+```
+
+This uses native PowerShell operators for reliable path parsing and deduplication. **Note:** PATH changes require a new terminal session to take effect.
+
 ## Publish
 
 ### Marketplace (VSCE)
