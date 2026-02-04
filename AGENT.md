@@ -53,7 +53,8 @@ You **must** update the corresponding sections in `README.md`:
 1. Make code changes
 2. Update `README.md` to match the new behavior
 3. Run `.\scripts\test.ps1` to verify everything works
-4. Only then consider the task complete
+4. Commit using conventional commit format (see below)
+5. Only then consider the task complete
 
 Example:
 
@@ -61,8 +62,34 @@ Example:
 ✗ Change argv parsing in code-dbg.py
 ✓ Update README.md usage examples
 ✓ Run test.ps1 (passes)
-✓ Commit
+✓ Commit with: "feat: Add support for custom debugger flags"
 ```
+
+## Commit Messages
+
+**All commits must use conventional commit format** for automatic changelog generation.
+
+Use these prefixes:
+
+- `feat:` – New features or capabilities
+- `fix:` – Bug fixes
+- `docs:` – Documentation-only changes
+- `chore:` – Maintenance, dependencies, build scripts
+- `refactor:` – Code restructuring without behavior changes
+- `perf:` – Performance improvements
+- `test:` – Test additions or modifications
+
+Examples:
+
+```
+feat: Add support for launching with custom arguments
+fix: Resolve URI encoding issue with spaces in paths
+docs: Update installation instructions for PowerShell 7
+chore: Bump version to 0.1.34
+refactor: Extract debugger launch logic into separate function
+```
+
+The changelog generation script (`.\scripts\generate-changelog.ps1`) automatically categorizes commits based on these prefixes.
 
 ## Key Files to Watch
 

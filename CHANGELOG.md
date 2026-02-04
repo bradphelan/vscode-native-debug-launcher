@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+### Added
 
-- First (09e8464)
+- First commit (fe0629b)
+
+### Documentation
+
+- Add CHANGELOG.md and update README.md for clarity; bump version to 0.1.33 (8002557)
 
 
