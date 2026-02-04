@@ -389,8 +389,13 @@ async function autoInstallOrUpgradeCli(
     log(`   Bundled: ${bundledVersion}`);
     log(`   Installed: ${installedVersion || "none"}`);
 
+    // The app directory always exists in the extension, so just check if PATH needs updating
     if (installedVersion !== bundledVersion) {
-      log(`\n🔄 CLI version mismatch - installing...`);
+      if (!installedVersion) {
+        log(`\n🔄 Installing CLI...`);
+      } else {
+        log(`\n🔄 CLI version mismatch - updating PATH reference...`);
+      }
       const result = await installCli(context);
 
       if (result.success) {
@@ -402,8 +407,8 @@ async function autoInstallOrUpgradeCli(
 
         const isFirstInstall = !installedVersion;
         const message = isFirstInstall
-          ? `✓ Code DBG CLI installed to ${result.installPath}. Restart your terminal to use \`code-dbg\`.`
-          : `✓ Code DBG CLI updated to v${bundledVersion}. Restart your terminal.`;
+          ? `✓ Code DBG CLI installed to ${result.installPath}. You must RESTART your terminal/PowerShell for the 'code-dbg' command to work.`
+          : `✓ Code DBG CLI updated to v${bundledVersion}. RESTART your terminal for the update to take effect.`;
 
         log(`✅ ${message}`);
 
@@ -466,98 +471,98 @@ interface InstallResult {
   error?: string;
 }
 
+/**
+ * Adds a directory to the Windows user PATH environment variable using PowerShell.
+ *
+ * This function uses PowerShell's native array operators (-split, -notin, -join) to:
+ * - Parse the existing PATH into an array
+ * - Check if the directory is already present (case-insensitive)
+ * - Add it only if it's not already there (prevents duplicates)
+ * - Join the array back and set the environment variable
+ *
+ * @param installDir - The full path to the directory to add to PATH
+ * @returns Promise<boolean> - true if successful or already exists, false on error
+ *
+ * @note Requires terminal restart for changes to take effect in current session
+ * @note Only updates user PATH, not system PATH (no admin required)
+ */
+async function addToUserPath(installDir: string): Promise<boolean> {
+  try {
+    // PowerShell script that safely manages PATH without duplicates
+    const psScript = `
+$installDir = '${installDir.replace(/'/g, "''")}'
+$path = [Environment]::GetEnvironmentVariable('PATH', 'User')
+$pathArray = if ($path) { $path -split ';' | Where-Object { $_ } } else { @() }
+
+if ($installDir -notin $pathArray) {
+  $pathArray += $installDir
+  [Environment]::SetEnvironmentVariable('PATH', ($pathArray -join ';'), 'User')
+  Write-Output 'ADDED'
+} else {
+  Write-Output 'EXISTS'
+}
+`;
+    const { stdout } = await execAsync(
+      `powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`,
+    );
+    const result = stdout.trim();
+
+    if (result === "ADDED") {
+      log(`✓ Added ${installDir} to user PATH`);
+      log(
+        `⚠️  Restart your terminal/PowerShell for 'code-dbg' to be available`,
+      );
+      return true;
+    } else if (result === "EXISTS") {
+      log(`✓ ${installDir} is already in user PATH`);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    log(
+      `⚠️  Could not update PATH: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    log(`   You can manually add to PATH by running in PowerShell:`);
+    log(
+      `   $path = [Environment]::GetEnvironmentVariable('PATH', 'User'); [Environment]::SetEnvironmentVariable('PATH', "$path;${installDir}", 'User')`,
+    );
+    return false;
+  }
+}
+
 async function installCli(
   context: vscode.ExtensionContext,
 ): Promise<InstallResult> {
   try {
     const platform = process.platform;
-    const sourcePath = path.join(context.extensionPath, "app", "code-dbg.py");
 
-    if (!fs.existsSync(sourcePath)) {
+    // The CLI script is in the app/ directory of the extension
+    const appDir = path.join(context.extensionPath, "app");
+
+    if (!fs.existsSync(appDir)) {
       return {
         success: false,
-        error: "code-dbg.py not found in extension bundle",
+        error: "app directory not found in extension bundle",
       };
     }
 
-    let installDir: string;
-    let needsPathUpdate = false;
-
+    // Just add the app directory to PATH
     if (platform === "win32") {
-      // Windows: Install to AppData\code-dbg
-      installDir = path.join(os.homedir(), "AppData", "Roaming", "code-dbg");
+      await addToUserPath(appDir);
+      log(`✓ Added extension app directory to user PATH: ${appDir}`);
     } else {
-      // macOS/Linux: Install to ~/.local/bin
-      installDir = path.join(os.homedir(), ".local", "bin");
-    }
-
-    // Create install directory
-    fs.mkdirSync(installDir, { recursive: true });
-
-    // Copy Python script
-    const targetPyScript = path.join(installDir, "code-dbg.py");
-    fs.copyFileSync(sourcePath, targetPyScript);
-    log(`✓ Copied code-dbg.py to ${installDir}`);
-
-    if (platform === "win32") {
-      // Create batch wrappers for Windows
-      const batchFile = path.join(installDir, "code-dbg.bat");
-      const batchContent = `@echo off\npython "%~dp0code-dbg.py" %*`;
-      fs.writeFileSync(batchFile, batchContent, "ascii");
-      log(`✓ Created code-dbg.bat`);
-
-      const insidersBatchFile = path.join(installDir, "code-dbg-insiders.bat");
-      const insidersBatchContent = `@echo off\npython "%~dp0code-dbg.py" --insiders %*`;
-      fs.writeFileSync(insidersBatchFile, insidersBatchContent, "ascii");
-      log(`✓ Created code-dbg-insiders.bat`);
-
-      // Add to PATH if not already there
-      try {
-        const { stdout } = await execAsync(
-          `powershell -Command "[Environment]::GetEnvironmentVariable('PATH', 'User')"`,
-        );
-        const userPath = stdout.trim();
-
-        if (!userPath.includes(installDir)) {
-          const newPath = userPath ? `${userPath};${installDir}` : installDir;
-          // Escape quotes for PowerShell command
-          const escapedPath = newPath.replace(/"/g, '""');
-          await execAsync(
-            `powershell -Command "[Environment]::SetEnvironmentVariable('PATH', '${escapedPath}', 'User')"`,
-          );
-          log(`✓ Added ${installDir} to user PATH`);
-          needsPathUpdate = true;
-        }
-      } catch (error) {
-        log(`⚠ Could not update PATH automatically: ${error}`);
-      }
-    } else {
-      // Create shell script wrappers for Unix
-      const shellScript = path.join(installDir, "code-dbg");
-      const shellContent = `#!/usr/bin/env bash\npython3 "$(dirname "$0")/code-dbg.py" "$@"`;
-      fs.writeFileSync(shellScript, shellContent, { mode: 0o755 });
-      log(`✓ Created code-dbg shell script`);
-
-      const insidersShellScript = path.join(installDir, "code-dbg-insiders");
-      const insidersShellContent = `#!/usr/bin/env bash\npython3 "$(dirname "$0")/code-dbg.py" --insiders "$@"`;
-      fs.writeFileSync(insidersShellScript, insidersShellContent, {
-        mode: 0o755,
-      });
-      log(`✓ Created code-dbg-insiders shell script`);
-
-      // Check if ~/.local/bin is in PATH
+      // On Unix, just log instructions
       const pathEnv = process.env.PATH || "";
-      if (!pathEnv.includes(installDir)) {
+      if (!pathEnv.includes(appDir)) {
         log(
-          `⚠ ${installDir} may not be in PATH. Add it to ~/.bashrc or ~/.zshrc`,
+          `ℹ️  On Unix, add this to ~/.bashrc or ~/.zshrc:\nexport PATH="${appDir}:$PATH"`,
         );
-        needsPathUpdate = true;
       }
     }
 
     return {
       success: true,
-      installPath: installDir,
+      installPath: appDir,
     };
   } catch (error) {
     return {
