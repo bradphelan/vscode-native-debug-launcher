@@ -37,49 +37,56 @@ if ($null -eq $vsixFile) {
 Write-Host "Found VSIX: $($vsixFile.Name)" -ForegroundColor Green
 Write-Host ""
 
-# Install to specified VS Code variant
-if ($Code) {
-    Write-Host "Installing to VS Code (Stable)..." -ForegroundColor Yellow
-    
-    # Check if code command exists
-    $codeCmd = Get-Command code -ErrorAction SilentlyContinue
-    if ($null -eq $codeCmd) {
-        Write-Host "ERROR: 'code' command not found in PATH" -ForegroundColor Red
-        Write-Host "Please install VS Code from https://code.visualstudio.com/" -ForegroundColor Yellow
-        exit 1
-    }
-    
-    & code --install-extension $vsixFile.FullName --force
-    
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "✓ Extension installed successfully to VS Code!" -ForegroundColor Green
-    }
-    else {
-        Write-Host "✗ Failed to install extension to VS Code" -ForegroundColor Red
-        exit 1
-    }
+# Determine which command to use for cleanup/install
+$codeCmd = if ($Code) { "code" } else { "code-insiders" }
+$codeDisplayName = if ($Code) { "VS Code (Stable)" } else { "VS Code Insiders" }
+
+# Check if command exists
+$cmdCheck = Get-Command $codeCmd -ErrorAction SilentlyContinue
+if ($null -eq $cmdCheck) {
+    Write-Host "ERROR: '$codeCmd' command not found in PATH" -ForegroundColor Red
+    $downloadUrl = if ($Code) { "https://code.visualstudio.com/" } else { "https://code.visualstudio.com/insiders/" }
+    Write-Host "Please install $codeDisplayName from $downloadUrl" -ForegroundColor Yellow
+    exit 1
 }
 
-if ($CodeInsiders) {
-    Write-Host "Installing to VS Code Insiders..." -ForegroundColor Yellow
-    
-    # Check if code-insiders command exists
-    $codeInsidersCmd = Get-Command code-insiders -ErrorAction SilentlyContinue
-    if ($null -eq $codeInsidersCmd) {
-        Write-Host "ERROR: 'code-insiders' command not found in PATH" -ForegroundColor Red
-        Write-Host "Please install VS Code Insiders from https://code.visualstudio.com/insiders/" -ForegroundColor Yellow
-        exit 1
-    }
-    
-    & code-insiders --install-extension $vsixFile.FullName --force
-    
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "✓ Extension installed successfully to VS Code Insiders!" -ForegroundColor Green
-    }
-    else {
-        Write-Host "✗ Failed to install extension to VS Code Insiders" -ForegroundColor Red
-        exit 1
-    }
+# Step 1: Close VS Code instances
+Write-Host "Cleaning up..." -ForegroundColor Yellow
+
+$processName = if ($Code) { "code" } else { "Code - Insiders" }
+$runningProcesses = Get-Process -Name code -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq "code" }
+
+if ($runningProcesses) {
+    Write-Host "  Closing $codeDisplayName instances..." -ForegroundColor Gray
+    $runningProcesses | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+}
+
+# Step 2: Uninstall old extension IDs
+$oldExtensionIds = @(
+    "moduleworks.vscode-debugger-launcher",
+    "bradphelan.code-dbg"
+)
+
+foreach ($extId in $oldExtensionIds) {
+    Write-Host "  Uninstalling old extension: $extId" -ForegroundColor Gray
+    & $codeCmd --uninstall-extension $extId 2>&1 | Out-Null
+}
+
+Start-Sleep -Seconds 2
+
+# Step 3: Install the new VSIX
+Write-Host ""
+Write-Host "Installing to $codeDisplayName..." -ForegroundColor Yellow
+
+& $codeCmd --install-extension $vsixFile.FullName --force 2>&1 | Out-Null
+
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "? Extension installed successfully to $codeDisplayName!" -ForegroundColor Green
+}
+else {
+    Write-Host "? Failed to install extension to $codeDisplayName" -ForegroundColor Red
+    exit 1
 }
 
 Write-Host ""
@@ -87,3 +94,9 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Installation Complete!" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
+Write-Host "Next steps:" -ForegroundColor Yellow
+Write-Host "  1. Reopen ${codeDisplayName}: $codeCmd ." -ForegroundColor White
+Write-Host "  2. Open a new terminal (not reuse old one)" -ForegroundColor White
+Write-Host "  3. Try the command: code-dbg --help" -ForegroundColor White
+Write-Host ""
+
