@@ -231,19 +231,19 @@ This prints the debug URL without launching VS Code, letting you inspect the pay
 
 ### Project Structure Reference
 
-| File                           | Purpose                                        |
-| ------------------------------ | ---------------------------------------------- |
-| `src/extension.ts`             | Main VS Code extension code                    |
-| `src/version.json`             | Generated version info (Windows build only)    |
-| `app/code-dbg.py`              | Python CLI tool (bundled in extension)        |
-| `scripts/build.ps1`            | Main build script                              |
-| `scripts/generate-version.ps1` | Semantic versioning with pre-release support   |
-| `scripts/install.ps1`          | Extension installation script                  |
-| `scripts/test.ps1`             | Automated test suite                           |
-| `scripts/build-test-exe.ps1`   | Helper to compile test application             |
-| `test-app/hello.cpp`           | Simple C++ test application                    |
-| `package.json`                 | Extension manifest and dependencies            |
-| `tsconfig.json`                | TypeScript compiler configuration              |
+| File                           | Purpose                                      |
+| ------------------------------ | -------------------------------------------- |
+| `src/extension.ts`             | Main VS Code extension code                  |
+| `src/version.json`             | Generated version info (Windows build only)  |
+| `app/code-dbg.py`              | Python CLI tool (bundled in extension)       |
+| `scripts/build.ps1`            | Main build script                            |
+| `scripts/generate-version.ps1` | Semantic versioning with pre-release support |
+| `scripts/install.ps1`          | Extension installation script                |
+| `scripts/test.ps1`             | Automated test suite                         |
+| `scripts/build-test-exe.ps1`   | Helper to compile test application           |
+| `test-app/hello.cpp`           | Simple C++ test application                  |
+| `package.json`                 | Extension manifest and dependencies          |
+| `tsconfig.json`                | TypeScript compiler configuration            |
 
 ### PATH Management
 
@@ -252,7 +252,7 @@ The extension uses VS Code's `environmentVariableCollection` API to add the bund
 ```typescript
 const envCollection = context.environmentVariableCollection;
 if (!existingPath || !existingPath.value.includes(appDir)) {
-  envCollection.append('PATH', `;${appDir}`);
+  envCollection.append("PATH", `;${appDir}`);
 }
 ```
 
