@@ -95,6 +95,7 @@ Write-Host "Installation Complete!" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
+Write-Host "  0. Restart your extensions ( see extensions view )" -ForegroundColor White
 Write-Host "  1. Reopen ${codeDisplayName}: $codeCmd ." -ForegroundColor White
 Write-Host "  2. Open a new terminal (not reuse old one)" -ForegroundColor White
 Write-Host "  3. Try the command: code-dbg --help" -ForegroundColor White
