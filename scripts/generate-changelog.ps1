@@ -51,6 +51,7 @@ function Get-CommitType {
 # Get package version
 $packageJson = Get-Content "package.json" | ConvertFrom-Json
 $currentVersion = $packageJson.version
+$currentDate = Get-Date -Format "yyyy-MM-dd"
 
 # Get git tags (versions)
 $tags = git tag --sort=-version:refname 2>$null
@@ -87,7 +88,8 @@ Write-Host "Collecting commits $sinceText..." -ForegroundColor Cyan
 $commits = Get-CommitsBetween -Range $commitRange
 
 if ($commits) {
-    $changelog += "`n## [Unreleased]`n`n"
+    # Use current version from package.json instead of "Unreleased"
+    $changelog += "`n## [$currentVersion] - $currentDate`n`n"
 
     # Group commits by type
     $grouped = @{}
