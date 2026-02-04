@@ -2,7 +2,7 @@
   "name": "code-dbg",
   "displayName": "Code DBG",
   "description": "Launch executables with debugger from terminal without launch.json",
-  "version": "0.1.40",
+  "version": "0.1.50",
   "publisher": "bradphelan",
   "repository": {
     "type": "git",
