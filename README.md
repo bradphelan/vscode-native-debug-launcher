@@ -21,24 +21,19 @@ The extension parses the debug URL, validates the workspace and executable, and 
 ### From VS Code Marketplace
 
 1. Install the extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/) or search for "Code DBG" in VS Code's Extensions view (`Ctrl+Shift+X`)
-2. The CLI script (`code-dbg`) is automatically installed to your system PATH when the extension activates
-3. **Restart your terminal** after installation to use the `code-dbg` command
+2. The `code-dbg` CLI is **automatically available** in any terminal opened within VS Code
+3. No separate installation step needed—just open a terminal in VS Code and use `code-dbg`
 
-The extension will:
+The extension automatically:
 
-- Auto-install the CLI script to `%APPDATA%\code-dbg` (Windows)
-- Update your PATH environment variable
-- Notify you when installation completes
-- Auto-upgrade the CLI when you update the extension
-
-**Manual Commands:**
-
-- `Code DBG: Install CLI` - Reinstall the CLI script
-- `Code DBG: Check CLI Status` - Verify installation and version
+- Bundles the CLI script in the extension's `app/` directory
+- Makes it available via VS Code's `environmentVariableCollection` API
+- Applies the PATH update only to VS Code terminals (not the system PATH)
+- Works immediately when you activate the extension
 
 ### From Source
 
-See the [Build and Install](#build-and-install-from-source) section below for manual installation from source code.
+See the [Build and Install](#build-and-install-from-source) section below for building from source code.
 
 ## Usage
 
@@ -156,9 +151,9 @@ This keeps VS Code open after the test completes so you can inspect the debugger
 npm install
 ```
 
-2. **Configure your Python environment** (optional, for reference only):
+2. **Python is included** in the extension bundle:
 
-The CLI (`code-dbg`) is implemented in PowerShell with no external dependencies. All scripts use native PowerShell operators for reliability.
+The CLI (`app/code-dbg.py`) is a Python script bundled with the extension. No separate installation needed.
 
 ### Development Workflow
 
@@ -188,11 +183,11 @@ Tests automatically build the extension and test app, launch VS Code with the de
 
 ### Key Architecture
 
-**CLI: `app/code-dbg.ps1`**
+**CLI: `app/code-dbg.py`**
 
-Pure PowerShell script that runs on Windows (and Unix with PowerShell Core). Takes executable and arguments, constructs a base64-encoded debug payload, and launches VS Code with a custom URL scheme:
+Python script bundled with the extension. Takes executable and arguments, constructs a base64-encoded debug payload, and launches VS Code with a custom URL scheme:
 
-```powershell
+```
 vscode://bradphelan.code-dbg/launch?payload={base64_json}
 ```
 
@@ -200,6 +195,7 @@ vscode://bradphelan.code-dbg/launch?payload={base64_json}
 
 VS Code extension that:
 
+- Adds the bundled `app/` directory to PATH via `environmentVariableCollection` (VS Code terminals only)
 - Registers the `vscode://bradphelan.code-dbg/` URL handler
 - Listens for launch requests via `vscode.window.registerUriHandler()`
 - Parses and validates the payload
@@ -239,10 +235,10 @@ This prints the debug URL without launching VS Code, letting you inspect the pay
 | ------------------------------ | ---------------------------------------------- |
 | `src/extension.ts`             | Main VS Code extension code                    |
 | `src/version.json`             | Generated version info (Windows build only)    |
-| `app/code-dbg.ps1`             | PowerShell CLI tool for launching the debugger |
+| `app/code-dbg.py`              | Python CLI tool (bundled in extension)        |
 | `scripts/build.ps1`            | Main build script                              |
 | `scripts/generate-version.ps1` | Semantic versioning with pre-release support   |
-| `scripts/install.ps1`          | Manual CLI installation script                 |
+| `scripts/install.ps1`          | Extension installation script                  |
 | `scripts/test.ps1`             | Automated test suite                           |
 | `scripts/build-test-exe.ps1`   | Helper to compile test application             |
 | `test-app/hello.cpp`           | Simple C++ test application                    |
@@ -251,17 +247,16 @@ This prints the debug URL without launching VS Code, letting you inspect the pay
 
 ### PATH Management
 
-When the CLI is installed, the extension adds `%APPDATA%\code-dbg` to your user PATH using PowerShell:
+The extension uses VS Code's `environmentVariableCollection` API to add the bundled `app/` directory to the PATH:
 
-```powershell
-$pathArray = $path -split ';' | Where-Object { $_ }
-if ($installDir -notin $pathArray) {
-  $pathArray += $installDir
-  [Environment]::SetEnvironmentVariable('PATH', ($pathArray -join ';'), 'User')
+```typescript
+const envCollection = context.environmentVariableCollection;
+if (!existingPath || !existingPath.value.includes(appDir)) {
+  envCollection.append('PATH', `;${appDir}`);
 }
 ```
 
-This uses native PowerShell operators for reliable path parsing and deduplication. **Note:** PATH changes require a new terminal session to take effect.
+**Important:** The `code-dbg` command is **only available in terminals opened within VS Code**. It does not modify your system PATH, keeping your environment clean. External terminal windows won't have access to `code-dbg`.
 
 ## Publish
 
@@ -295,65 +290,48 @@ vsce publish patch
 
 ### Manual Installation (Development)
 
-### Step 1: Install the Extension
-
-After building, install the `.vsix` file:
+**Build the extension:**
 
 ```powershell
-code --install-extension code-dbg-X.X.X.vsix
+.\scripts\build.ps1 -Dev
 ```
 
-Or open the VSIX directly in VS Code:
-
-- Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac)
-- Type "Extensions: Install from VSIX"
-- Select the `.vsix` file
-
-### Step 2: Install the CLI Script
-
-**Windows:**
+**Install to VS Code:**
 
 ```powershell
-.\scripts\install.ps1
+.\scripts\install.ps1 -Code
 ```
 
-This copies the `code-dbg` script to your PATH, adds the `code-dbg-insiders` wrapper,
-and installs the VSIX into VS Code and VS Code Insiders when their CLI commands are available.
+**Verify it works:**
 
-### Step 3: Verify Installation
+1. Reopen VS Code: `code .`
+2. Open a terminal inside VS Code (Terminal → New Terminal)
+3. Run: `code-dbg --help`
 
-```powershell
-code-dbg --help
-```
-
-You should see the usage information.
+The `code-dbg` command should be available immediately in the new terminal.
 
 ## How It Works
 
 ```
-Terminal: code-dbg -- myapp.exe arg1 arg2
+Terminal (in VS Code): code-dbg -- myapp.exe arg1 arg2
          ↓
-Python script parses args (requires -- separator)
+CLI (app/code-dbg.py) parses args (requires -- separator)
          ↓
-Constructs debug payload (exe, args, cwd)
+Constructs debug payload (exe, args, cwd) as base64 JSON
          ↓
-Base64-encodes payload into VS Code URL
+Invokes: code --open-url vscode://bradphelan.code-dbg/launch?payload=...
          ↓
-Prints URL: vscode://bradphelan.code-dbg/launch?payload=...
-         ↓
-Invokes: code --open-url <URL>
-         ↓
-VS Code Extension receives URL
+VS Code Extension receives URL via registerUriHandler
          ↓
 Parses and validates payload
          ↓
-Selects debugger by platform (MSVC/GDB/LLDB)
+Selects debugger by platform (MSVC on Windows, GDB/LLDB on Unix)
          ↓
-Creates debug configuration
+Creates debug configuration and validates executable
          ↓
-Launches debugger via VS Code Debug API
+Launches debugger session via vscode.debug.startDebugging()
          ↓
-Session starts and auto-continues after activation
+Auto-continues execution after debugger attaches
 ```
 
 ## Project Structure
