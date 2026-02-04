@@ -46,29 +46,30 @@ code-dbg [OPTIONS] -- <executable> [arguments...]
 **Options:**
 
 - `--cwd=<dir>` — Working directory (defaults to current directory)
-- `--insiders` — Use VS Code Insiders URL scheme and launcher
+- `--insiders` — Force use of VS Code Insiders (auto-detected from environment if running in VS Code)
+- `--url-only` — Only print the debug URL, do not launch VS Code
 - `--` — Required separator between code-dbg options and executable/args
 
 **Examples:**
 
 ```powershell
-# Print debug URL (default)
+# Basic: auto-detects Insiders vs Stable automatically
 code-dbg -- myapp.exe
 
-# Print URL with arguments
+# With arguments
 code-dbg -- myapp.exe --verbose --config=file.conf
 
 # Specific working directory
 code-dbg --cwd=C:\workspace -- myapp.exe
 
-# Launch VS Code immediately
+# Print URL only (useful for debugging)
+code-dbg --url-only -- myapp.exe
+
+# Force Stable version (if running in Insiders)
 code-dbg -- myapp.exe
 
-# Launch VS Code Insiders immediately
+# Force Insiders version (if running in Stable)
 code-dbg --insiders -- myapp.exe
-
-# Insiders wrapper
-code-dbg-insiders -- myapp.exe
 
 # With options and arguments starting with --
 code-dbg --cwd=/tmp -- ./app.exe -- --my-flag
@@ -76,12 +77,30 @@ code-dbg --cwd=/tmp -- ./app.exe -- --my-flag
 
 **Requirements:**
 
-1. Must use `--` separator before the executable path
-2. Must have a folder open in VS Code (File → Open Folder)
+1. **Must run from a VS Code terminal** (File → Open Folder, then Terminal → New Terminal)
+2. Use `--` separator before the executable path
 3. Executable must exist and be accessible
 4. Appropriate debugger must be installed:
    - Windows: MSVC debugger (Visual Studio or Build Tools)
    - (No other platform tested at the moment)
+
+## Auto-Detection
+
+The `code-dbg` command automatically detects whether you're running in **VS Code Stable** or **VS Code Insiders** based on environment variables set within the VS Code terminal:
+
+1. Checks `VSCODE_INJECTION` to confirm running inside VS Code (exits gracefully if not found)
+2. Checks the `PATH` for "VS Code Insiders" executable
+3. Checks `VSCODE_*` environment variables for "Insiders" references
+4. Checks other VS Code env vars (`GIT_ASKPASS`, `BUNDLED_DEBUGPY_PATH`, `PYTHONSTARTUP`)
+
+**Result:**
+
+- ✅ When run from Insiders terminal → Uses `vscode-insiders://` scheme automatically
+- ✅ When run from Stable terminal → Uses `vscode://` scheme automatically
+- ✅ Can override with `--insiders` flag if needed
+- ❌ When run outside VS Code → Exits with clear error message
+
+This means you **don't need to specify `--insiders`** in most cases—it just works!
 
 ## Build and Install from Source
 
@@ -141,6 +160,8 @@ This keeps VS Code open after the test completes so you can inspect the debugger
 .\scripts\test.ps1 -NoBuild
 ```
 
+Note: Tests must run from within VS Code's terminal due to the `VSCODE_INJECTION` requirement in the CLI script.
+
 ## Development
 
 ### Setup
@@ -185,10 +206,17 @@ Tests automatically build the extension and test app, launch VS Code with the de
 
 **CLI: `app/code-dbg.py`**
 
-Python script bundled with the extension. Takes executable and arguments, constructs a base64-encoded debug payload, and launches VS Code with a custom URL scheme:
+Python script bundled with the extension. Takes executable and arguments, constructs a base64-encoded debug payload, and launches VS Code with a custom URL scheme.
+
+**Features:**
+
+- **Auto-detects VS Code version:** Checks environment variables (PATH, VSCODE_GIT_ASKPASS_MAIN, etc.) to determine if running in VS Code Insiders or Stable
+- **Environment validation:** Requires `VSCODE_INJECTION` environment variable to confirm running inside VS Code; exits gracefully if not in VS Code terminal
+- **URL construction:** Constructs the appropriate URL scheme (`vscode-insiders://` or `vscode://`) based on detected version
 
 ```
 vscode://bradphelan.code-dbg/launch?payload={base64_json}
+vscode-insiders://bradphelan.code-dbg/launch?payload={base64_json}
 ```
 
 **Extension: `src/extension.ts`**
@@ -227,13 +255,15 @@ code .
 .\app\code-dbg.bat -- cmd.exe /c "echo Hello"
 ```
 
-Or from any VS Code terminal:
+This will fail with an error message since `code-dbg.bat` is being run outside VS Code.
+
+From a terminal within VS Code:
 
 ```powershell
 code-dbg -- cmd.exe /c "echo Hello"
 ```
 
-This prints the debug URL and launches VS Code with the debugger attached.
+This prints the debug URL and launches VS Code with the debugger attached (auto-detecting whether you're using Insiders or Stable).
 
 ### Project Structure Reference
 
@@ -321,7 +351,11 @@ The `code-dbg` command should be available immediately in the new terminal.
 ```
 Terminal (in VS Code): code-dbg -- myapp.exe arg1 arg2
          ↓
-CLI (app/code-dbg.py) parses args (requires -- separator)
+CLI (app/code-dbg.py) validates running in VS Code (checks VSCODE_INJECTION)
+         ↓
+Auto-detects VS Code version (Insiders vs Stable from environment)
+         ↓
+Parses args (requires -- separator)
          ↓
 Constructs debug payload (exe, args, cwd) as base64 JSON
          ↓

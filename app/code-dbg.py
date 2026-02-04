@@ -7,7 +7,7 @@ Usage:
 
 Options:
     --cwd=<dir>      Working directory (defaults to current directory)
-    --insiders       Use VS Code Insiders URL scheme and launcher
+    --url-only       Only print the debug URL, do not launch VS Code
     --               Stop parsing options; everything after is: exe + args
 
 Examples:
@@ -15,11 +15,13 @@ Examples:
     code-dbg --cwd=/path/to/wd -- /usr/local/bin/myapp arg1 arg2
     code-dbg -- ./app.exe -- --my-flag
     code-dbg --cwd=/tmp -- /usr/local/bin/myapp
-    code-dbg --insiders -- ./app.exe
-    code-dbg-insiders -- ./app.exe
+    code-dbg --url-only -- ./app.exe
 
 Note: Use -- to separate code-dbg options from the executable and its arguments.
       This is required if your executable takes arguments starting with --
+
+      The script automatically detects if running in VS Code Insiders by checking
+      environment variables. Works seamlessly in both Insiders and Stable versions.
 """
 
 import sys
@@ -32,7 +34,41 @@ import webbrowser
 from pathlib import Path
 
 
+def detect_vscode_version():
+    """Auto-detect if running in VS Code Insiders by checking environment variables.
+
+    Returns True if running in VS Code Insiders, False otherwise (including when not in VS Code).
+    """
+    # First, check if we're even running inside VS Code
+    if 'VSCODE_INJECTION' not in os.environ:
+        return False
+
+    # Check PATH for VS Code Insiders bin directory (most reliable indicator)
+    path_env = os.environ.get('PATH', '')
+    if 'Insiders' in path_env and 'VS Code Insiders' in path_env:
+        return True
+
+    # Fallback: Check VSCODE-related environment variables for "Insiders"
+    for key, value in os.environ.items():
+        if key.startswith('VSCODE_') and value and 'Insiders' in value:
+            return True
+
+    # Also check other common VS Code env vars
+    for key in ['GIT_ASKPASS', 'BUNDLED_DEBUGPY_PATH', 'PYTHONSTARTUP']:
+        value = os.environ.get(key, '')
+        if value and 'Insiders' in value:
+            return True
+
+    return False
+
+
 def main():
+    # Check if running inside VS Code
+    if 'VSCODE_INJECTION' not in os.environ:
+        print("Error: code-dbg must be run from a terminal inside VS Code.", file=sys.stderr)
+        print("This tool is designed to launch the VS Code debugger from within VS Code's integrated terminal.", file=sys.stderr)
+        sys.exit(1)
+
     # Require -- separator to clearly separate options from exe/args
     if '--' not in sys.argv[1:]:
         print("Error: Missing '--' separator", file=sys.stderr)
@@ -64,18 +100,15 @@ def main():
     )
 
     parser.add_argument(
-        '--insiders',
-        action='store_true',
-        help='Use VS Code Insiders URL scheme and launcher'
-    )
-
-    parser.add_argument(
         '--url-only',
         action='store_true',
         help='Only generate and print the URL, do not launch VS Code'
     )
 
     args = parser.parse_args()
+
+    # Auto-detect Insiders version from environment
+    use_insiders = detect_vscode_version()
 
     # Get current working directory
     cwd = args.cwd or os.getcwd()
@@ -102,7 +135,7 @@ def main():
     payload_base64 = base64.b64encode(payload_json.encode()).decode()
 
     # Construct VS Code URL
-    scheme = 'vscode-insiders' if args.insiders else 'vscode'
+    scheme = 'vscode-insiders' if use_insiders else 'vscode'
     url = f"{scheme}://bradphelan.code-dbg/launch?payload={payload_base64}"
 
     # Print the URL (for logging/debugging, and for test automation)
@@ -119,11 +152,11 @@ def main():
             webbrowser.open(url)
         elif sys.platform == 'darwin':
             # macOS: Use 'code' or 'code-insiders' command
-            command = 'code-insiders' if args.insiders else 'code'
+            command = 'code-insiders' if use_insiders else 'code'
             subprocess.run([command, '--open-url', url], check=True)
         else:
             # Linux and other Unix-like systems
-            command = 'code-insiders' if args.insiders else 'code'
+            command = 'code-insiders' if use_insiders else 'code'
             subprocess.run([command, '--open-url', url], check=True)
 
         print(f"Launching debugger for: {os.path.basename(exe_path)}")
