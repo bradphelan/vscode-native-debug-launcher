@@ -27,6 +27,10 @@
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
+  "files": [
+    "out",
+    "app"
+  ],
   "contributes": {
     "commands": [
       {

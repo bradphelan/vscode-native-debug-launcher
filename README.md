@@ -224,10 +224,16 @@ code .
 4. **Test the CLI:**
 
 ```powershell
-.\app\code-dbg.ps1 -- cmd.exe /c "echo Hello"
+.\app\code-dbg.bat -- cmd.exe /c "echo Hello"
 ```
 
-This prints the debug URL without launching VS Code, letting you inspect the payload.
+Or from any VS Code terminal:
+
+```powershell
+code-dbg -- cmd.exe /c "echo Hello"
+```
+
+This prints the debug URL and launches VS Code with the debugger attached.
 
 ### Project Structure Reference
 
