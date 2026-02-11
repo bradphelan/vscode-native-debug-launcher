@@ -43,11 +43,6 @@ def detect_vscode_version():
     if 'VSCODE_INJECTION' not in os.environ:
         return False
 
-    # Check PATH for VS Code Insiders bin directory (most reliable indicator)
-    path_env = os.environ.get('PATH', '')
-    if 'Insiders' in path_env and 'VS Code Insiders' in path_env:
-        return True
-
     # Fallback: Check VSCODE-related environment variables for "Insiders"
     for key, value in os.environ.items():
         if key.startswith('VSCODE_') and value and 'Insiders' in value:
