@@ -6,6 +6,7 @@ interface DebugPayload {
   exe: string;
   args: string[];
   cwd: string;
+  natvis?: string;
 }
 
 let outputChannel: vscode.OutputChannel;
@@ -199,6 +200,9 @@ async function handleDebugUri(uri: vscode.Uri): Promise<void> {
     log(`     exe: ${payload.exe}`);
     log(`     args: [${payload.args.join(", ")}]`);
     log(`     cwd: ${payload.cwd}`);
+    if (payload.natvis) {
+      log(`     natvis: ${payload.natvis}`);
+    }
   } catch (error) {
     logError("Failed to decode debug payload", error as Error);
     throw new Error(`Failed to decode debug payload: ${error}`);
@@ -219,6 +223,14 @@ async function handleDebugUri(uri: vscode.Uri): Promise<void> {
     : path.join(payload.cwd, payload.exe);
   log(`✅ Resolved exe path: ${exePath}`);
 
+  let natvisPath: string | undefined;
+  if (payload.natvis) {
+    natvisPath = path.isAbsolute(payload.natvis)
+      ? payload.natvis
+      : path.join(payload.cwd, payload.natvis);
+    log(`✅ Resolved natvis path: ${natvisPath}`);
+  }
+
   // Verify executable exists
   log("🔎 Checking if executable exists");
   if (!fs.existsSync(exePath)) {
@@ -228,6 +240,15 @@ async function handleDebugUri(uri: vscode.Uri): Promise<void> {
   log("✅ Executable found");
   const stats = fs.statSync(exePath);
   log(`   Size: ${stats.size} bytes`);
+
+  if (natvisPath) {
+    log("🔎 Checking if natvis file exists");
+    if (!fs.existsSync(natvisPath)) {
+      logError(`Natvis file not found: ${natvisPath}`);
+      throw new Error(`Natvis file not found: ${natvisPath}`);
+    }
+    log("✅ Natvis file found");
+  }
 
   // Detect debugger based on platform and exe extension
   log("🔧 Detecting debugger");
@@ -262,8 +283,12 @@ async function handleDebugUri(uri: vscode.Uri): Promise<void> {
       env: {
         E2E_TEST_OUTPUT_DIR: payload.cwd,
       },
+      ...(natvisPath ? { visualizerFile: natvisPath } : {}),
     });
     log(`   Environment: E2E_TEST_OUTPUT_DIR=${payload.cwd}`);
+    if (natvisPath) {
+      log(`   Visualizer file: ${natvisPath}`);
+    }
   } else if (debugger_ === "gdb" || debugger_ === "lldb") {
     log("   Adding GDB/LLDB-specific settings");
     Object.assign(config, {
@@ -274,6 +299,9 @@ async function handleDebugUri(uri: vscode.Uri): Promise<void> {
       },
     });
     log(`   Environment: E2E_TEST_OUTPUT_DIR=${payload.cwd}`);
+    if (natvisPath) {
+      log("   Natvis provided but ignored for non-cppvsdbg debugger");
+    }
   }
 
   // Get the workspace folder

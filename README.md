@@ -46,8 +46,16 @@ code-dbg [OPTIONS] -- <executable> [arguments...]
 **Options:**
 
 - `--cwd=<dir>` — Working directory (defaults to current directory)
+- `--natvis=<file.natvis>` — Explicit Natvis file (overrides auto-discovery)
 - `--url-only` — Only print the debug URL, do not launch VS Code
 - `--` — Required separator between code-dbg options and executable/args
+
+**Natvis behavior:**
+
+- If `--natvis` is provided, that file is used.
+- If `--natvis` is not provided, `code-dbg` searches upward from the executable directory to find a `.natvis` file.
+- If a searched directory contains multiple `.natvis` files, launch fails and asks you to pass `--natvis` explicitly.
+- On non-Windows debuggers, Natvis is ignored.
 
 **Examples:**
 
@@ -60,6 +68,9 @@ code-dbg -- myapp.exe --verbose --config=file.conf
 
 # Specific working directory
 code-dbg --cwd=C:\workspace -- myapp.exe
+
+# Explicit natvis file
+code-dbg --natvis=C:\workspace\visualizers\types.natvis -- myapp.exe
 
 # Print URL only (useful for debugging)
 code-dbg --url-only -- myapp.exe
@@ -348,7 +359,9 @@ Auto-detects VS Code version (Insiders vs Stable from environment)
          ↓
 Parses args (requires -- separator)
          ↓
-Constructs debug payload (exe, args, cwd) as base64 JSON
+Resolves Natvis (explicit --natvis or upward search from executable directory)
+         ↓
+Constructs debug payload (exe, args, cwd, natvis?) as base64 JSON
          ↓
 Invokes: code --open-url vscode://bradphelan.code-dbg/launch?payload=...
          ↓
@@ -358,7 +371,7 @@ Parses and validates payload
          ↓
 Selects debugger by platform (MSVC on Windows, GDB/LLDB on Unix)
          ↓
-Creates debug configuration and validates executable
+Creates debug configuration, validates executable, and passes Natvis to cppvsdbg when available
          ↓
 Launches debugger session via vscode.debug.startDebugging()
          ↓

@@ -57,11 +57,44 @@ def detect_vscode_version():
     return False
 
 
+def find_natvis_upward(exe_path, cwd):
+    """Find a single .natvis file by searching upward from the executable directory.
+
+    Returns the absolute natvis path if found, or None if no natvis is discovered.
+    Raises ValueError if more than one .natvis file exists in the same directory.
+    """
+    exe_abs = exe_path if os.path.isabs(exe_path) else os.path.abspath(os.path.join(cwd, exe_path))
+    search_dir = Path(exe_abs).parent.resolve()
+
+    while True:
+        matches = sorted(
+            [candidate for candidate in search_dir.iterdir() if candidate.is_file() and candidate.suffix.lower() == ".natvis"],
+            key=lambda item: item.name.lower(),
+        )
+
+        if len(matches) == 1:
+            return str(matches[0])
+
+        if len(matches) > 1:
+            names = ", ".join(item.name for item in matches)
+            raise ValueError(
+                f"Multiple .natvis files found in '{search_dir}': {names}. "
+                "Pass exactly one file with --natvis."
+            )
+
+        parent = search_dir.parent
+        if parent == search_dir:
+            return None
+        search_dir = parent
+
+
 def main():
-    # Check if running inside VS Code
-    if 'VSCODE_INJECTION' not in os.environ:
+    # Allow URL generation outside VS Code for tests/automation, but require VS Code for launching.
+    url_only_requested = '--url-only' in sys.argv[1:]
+    if 'VSCODE_INJECTION' not in os.environ and not url_only_requested:
         print("Error: code-dbg must be run from a terminal inside VS Code.", file=sys.stderr)
         print("This tool is designed to launch the VS Code debugger from within VS Code's integrated terminal.", file=sys.stderr)
+        print("Tip: Use --url-only for automation outside VS Code.", file=sys.stderr)
         sys.exit(1)
 
     # Require -- separator to clearly separate options from exe/args
@@ -100,6 +133,12 @@ def main():
         help='Only generate and print the URL, do not launch VS Code'
     )
 
+    parser.add_argument(
+        '--natvis',
+        default=None,
+        help='Path to a single .natvis file. If omitted, code-dbg searches upward from executable directory.'
+    )
+
     args = parser.parse_args()
 
     # Auto-detect Insiders version from environment
@@ -113,6 +152,25 @@ def main():
     exe_path = args.exe
     exe_path = os.path.abspath(exe_path) if os.path.isabs(exe_path) else exe_path
 
+    # Resolve natvis file
+    natvis_path = None
+    if args.natvis:
+        natvis_candidate = args.natvis
+        natvis_abs = natvis_candidate if os.path.isabs(natvis_candidate) else os.path.abspath(os.path.join(cwd, natvis_candidate))
+        if not os.path.exists(natvis_abs):
+            print(f"Error: Natvis file not found: {natvis_abs}", file=sys.stderr)
+            sys.exit(1)
+        if not natvis_abs.lower().endswith('.natvis'):
+            print(f"Error: Natvis file must end with .natvis: {natvis_abs}", file=sys.stderr)
+            sys.exit(1)
+        natvis_path = natvis_abs
+    else:
+        try:
+            natvis_path = find_natvis_upward(exe_path, cwd)
+        except ValueError as error:
+            print(f"Error: {error}", file=sys.stderr)
+            sys.exit(1)
+
     # Verify executable exists (if absolute path)
     if os.path.isabs(exe_path) and not os.path.exists(exe_path):
         print(f"Error: Executable not found: {exe_path}", file=sys.stderr)
@@ -124,6 +182,8 @@ def main():
         'args': args.args,
         'cwd': cwd
     }
+    if natvis_path:
+        payload['natvis'] = natvis_path
 
     # Encode payload as base64
     payload_json = json.dumps(payload)

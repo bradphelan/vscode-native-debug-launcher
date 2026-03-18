@@ -22,6 +22,8 @@ $legacyExtensionLogFile = Join-Path $testWorkspace "vscode-debugger-launcher.log
 $testsPassed = 0
 $testsFailed = 0
 $testErrors = @()  # Collect errors to report at end
+$launchedCodeProcess = $null
+$pythonCommand = $null
 
 function Add-TestError {
     param([string]$ErrorMessage)
@@ -129,10 +131,45 @@ function ExpectEventually {
     return $false
 }
 
-function Close-VSCode {
-    Write-Step "Closing VS Code..."
-    Get-Process code -ErrorAction SilentlyContinue | Stop-Process -Force
-    Start-Sleep -Seconds 2
+function Close-LaunchedVSCode {
+    Write-Step "Closing VS Code launched by this test run..."
+
+    if ($null -eq $script:launchedCodeProcess) {
+        Write-Check "No test-launched VS Code process recorded; skipping close"
+        return
+    }
+
+    try {
+        # The code launcher may exit after handing off, so only stop if still alive.
+        if (-not $script:launchedCodeProcess.HasExited) {
+            Stop-Process -Id $script:launchedCodeProcess.Id -Force -ErrorAction Stop
+            Start-Sleep -Seconds 2
+            Write-Pass "Closed test-launched VS Code process"
+        }
+        else {
+            Write-Check "Test-launched VS Code process already exited"
+        }
+    }
+    catch {
+        Write-Check "Could not close test-launched VS Code process by PID; leaving existing VS Code instances untouched"
+    }
+}
+
+function Get-PayloadFromDebugUrl {
+    param([string]$DebugUrl)
+
+    if ($DebugUrl -notmatch "payload=([^&]+)") {
+        return $null
+    }
+
+    try {
+        $base64 = $matches[1]
+        $json = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($base64))
+        return $json | ConvertFrom-Json
+    }
+    catch {
+        return $null
+    }
 }
 
 Write-Host ""
@@ -199,6 +236,28 @@ ExpectOrExit (Test-Path $testExe) "Found: test.exe" "Test executable not found"
 Write-Step "Checking for Python script..."
 ExpectOrExit (Test-Path $pythonScript) "Found: code-dbg.py" "code-dbg.py not found."
 
+Write-Step "Resolving Python launcher..."
+foreach ($candidate in @("py", "python")) {
+    try {
+        & $candidate --version 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            $pythonCommand = $candidate
+            break
+        }
+    }
+    catch {
+        # Candidate is unavailable or non-runnable; try next.
+    }
+}
+
+if ($null -ne $pythonCommand) {
+    Write-Pass "Python launcher found: $pythonCommand"
+}
+else {
+    Write-Fail "Neither 'python' nor 'py' launcher is available in PATH"
+    exit 1
+}
+
 # ============================================================================
 # 2. SETUP TEST WORKSPACE
 # ============================================================================
@@ -227,9 +286,9 @@ Write-Section "3. Prepare Environment"
 Write-Step "Checking for running VS Code instances..."
 $runningVSCode = Get-Process code -ErrorAction SilentlyContinue
 if ($runningVSCode) {
-    Write-Step "Found running VS Code, closing it..."
-    Close-VSCode
-    Write-Pass "VS Code closed"
+    Write-Check "Found running VS Code instance(s); leaving them open"
+    Write-Check "This script now only closes the VS Code process it launches"
+    Write-Pass "Existing VS Code instances preserved"
 }
 else {
     Write-Pass "No VS Code running"
@@ -357,8 +416,8 @@ try {
 
     if ($LASTEXITCODE -ne 0 -or $debugUrl -notlike "*vscode://*") {
         Write-Check "code-dbg not available (expected), using Python fallback"
-        Write-Check "Fallback: python $pythonScript --url-only --cwd=$testWorkspace -- $testExe 'e2e-test-arg1' 'e2e-test-arg2'"
-        $debugUrl = & python $pythonScript --url-only --cwd=$testWorkspace -- $testExe "e2e-test-arg1" "e2e-test-arg2" 2>&1
+        Write-Check "Fallback: $pythonCommand $pythonScript --url-only --cwd=$testWorkspace -- $testExe 'e2e-test-arg1' 'e2e-test-arg2'"
+        $debugUrl = & $pythonCommand $pythonScript --url-only --cwd=$testWorkspace -- $testExe "e2e-test-arg1" "e2e-test-arg2" 2>&1
     }
     else {
         Write-Pass "code-dbg CLI command succeeded"
@@ -367,13 +426,64 @@ try {
 catch {
     Write-Check "code-dbg not available (expected), using Python fallback"
     Write-Check "Error: $_"
-    Write-Check "Fallback: python $pythonScript --url-only --cwd=$testWorkspace -- $testExe 'e2e-test-arg1' 'e2e-test-arg2'"
-    $debugUrl = & python $pythonScript --url-only --cwd=$testWorkspace -- $testExe "e2e-test-arg1" "e2e-test-arg2" 2>&1
+    Write-Check "Fallback: $pythonCommand $pythonScript --url-only --cwd=$testWorkspace -- $testExe 'e2e-test-arg1' 'e2e-test-arg2'"
+    $debugUrl = & $pythonCommand $pythonScript --url-only --cwd=$testWorkspace -- $testExe "e2e-test-arg1" "e2e-test-arg2" 2>&1
 }
 
-$urlGenerated = ($debugUrl -like "*vscode://*")
+$debugUrlString = ((($debugUrl | Out-String) -split "`r?`n") | Where-Object { $_ -match "^vscode(-insiders)?://" } | Select-Object -First 1)
+$urlGenerated = -not [string]::IsNullOrWhiteSpace($debugUrlString)
 ExpectOrExit $urlGenerated "URL generated" "Failed to generate debug URL"
-Write-Check "URL: $($debugUrl.Substring(0, 70))..."
+if (-not $urlGenerated) {
+    Write-Fail "Cannot continue without a valid debug URL. Aborting test early."
+    exit 1
+}
+
+if ($debugUrlString.Length -ge 70) {
+    Write-Check "URL: $($debugUrlString.Substring(0, 70))..."
+}
+else {
+    Write-Check "URL: $debugUrlString"
+}
+
+# ============================================================================
+# 6.5. VERIFY NATVIS PAYLOAD BEHAVIOR
+# ============================================================================
+Write-Section "6.5. Verify Natvis Payload"
+
+$autoNatvisFile = Join-Path $testWorkspace "auto-discovered.natvis"
+$explicitNatvisFile = Join-Path $testWorkspace "explicit.natvis"
+$duplicateNatvisFile = Join-Path $testWorkspace "duplicate.natvis"
+
+Write-Step "Preparing natvis files for payload validation..."
+"<AutoVisualizer xmlns='http://schemas.microsoft.com/vstudio/debugger/natvis/2010'></AutoVisualizer>" | Out-File -FilePath $autoNatvisFile -Encoding utf8
+Write-Pass "Natvis files created"
+
+Write-Step "Checking auto-discovery (no --natvis)..."
+$autoUrl = & $pythonCommand $pythonScript --url-only --cwd=$testWorkspace -- $testExe "e2e-test-arg1" "e2e-test-arg2" 2>&1
+$autoPayload = Get-PayloadFromDebugUrl -DebugUrl ($autoUrl | Out-String)
+$autoNatvisOk = ($null -ne $autoPayload -and $autoPayload.natvis -and (Split-Path -Leaf $autoPayload.natvis) -eq "auto-discovered.natvis")
+$null = Expect $autoNatvisOk "Auto-discovery selected single natvis file" "Auto-discovery did not select expected natvis file"
+
+Write-Step "Checking explicit --natvis override..."
+"<AutoVisualizer xmlns='http://schemas.microsoft.com/vstudio/debugger/natvis/2010'></AutoVisualizer>" | Out-File -FilePath $explicitNatvisFile -Encoding utf8
+$explicitUrl = & $pythonCommand $pythonScript --url-only --cwd=$testWorkspace --natvis=$explicitNatvisFile -- $testExe "e2e-test-arg1" "e2e-test-arg2" 2>&1
+$explicitPayload = Get-PayloadFromDebugUrl -DebugUrl ($explicitUrl | Out-String)
+$explicitNatvisOk = ($null -ne $explicitPayload -and $explicitPayload.natvis -and (Split-Path -Leaf $explicitPayload.natvis) -eq "explicit.natvis")
+$null = Expect $explicitNatvisOk "Explicit --natvis overrides auto-discovery" "Explicit --natvis was not propagated"
+
+Write-Step "Checking duplicate natvis failure behavior..."
+"<AutoVisualizer xmlns='http://schemas.microsoft.com/vstudio/debugger/natvis/2010'></AutoVisualizer>" | Out-File -FilePath $duplicateNatvisFile -Encoding utf8
+$duplicateOutput = & $pythonCommand $pythonScript --url-only --cwd=$testWorkspace -- $testExe "e2e-test-arg1" "e2e-test-arg2" 2>&1
+$duplicateFailed = ($LASTEXITCODE -ne 0 -and ($duplicateOutput | Out-String) -like "*Multiple .natvis files found*")
+$null = Expect $duplicateFailed "Duplicate natvis files produce expected failure" "Duplicate natvis files did not produce expected failure"
+
+Write-Step "Cleaning up temporary natvis files..."
+foreach ($file in @($autoNatvisFile, $explicitNatvisFile, $duplicateNatvisFile)) {
+    if (Test-Path $file) {
+        Remove-Item $file -Force
+    }
+}
+Write-Pass "Natvis test files cleaned"
 
 # ============================================================================
 # 7. OPEN WORKSPACE AND LAUNCH DEBUGGER
@@ -384,6 +494,7 @@ Write-Step "Opening VS Code workspace..."
 $env:VSCODE_DEBUGGER_TEST_MODE = "1"
 $env:E2E_TEST_OUTPUT_DIR = $testWorkspace
 $codeProcess = Start-Process code -ArgumentList $testWorkspace -PassThru
+$script:launchedCodeProcess = $codeProcess
 
 Write-Step "Waiting for extension to register URL handler (monitoring log)..."
 Write-Check "Looking for: 'URL handler is registered and ready'"
@@ -398,7 +509,7 @@ $handlerReady = ExpectEventually {
 } "Handler registered! Sending URL..." "Extension did not register handler in time" $maxWait 100
 
 if (-not $handlerReady) {
-    Get-Process code -ErrorAction SilentlyContinue | Stop-Process -Force
+    Close-LaunchedVSCode
 }
 
 # ============================================================================
@@ -469,7 +580,7 @@ if ($logContent -like "*Build:*") {
 # Now send the URL to the running instance
 Write-Step "Triggering debugger via URL..."
 # Use code --open-url to send the URL to the active VS Code instance
-& code --open-url $debugUrl 2>&1 | Out-Null
+& code --open-url $debugUrlString 2>&1 | Out-Null
 
 Write-Pass "Debug URL invoked!"
 
@@ -496,7 +607,7 @@ if (-not $handlerTriggered) {
     if (Test-Path $extensionLogFile) {
         Get-Content $extensionLogFile | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
     }
-    Get-Process code -ErrorAction SilentlyContinue | Stop-Process -Force
+    Close-LaunchedVSCode
 }
 
 # ============================================================================
@@ -530,7 +641,7 @@ if (-not $appLogFileFound) {
         Get-Content $extensionLogFile | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
     }
 
-    Get-Process code -ErrorAction SilentlyContinue | Stop-Process -Force
+    Close-LaunchedVSCode
 }
 
 # ============================================================================
@@ -623,9 +734,7 @@ if ($Interactive) {
 }
 
 Write-Step "Closing VS Code..."
-Get-Process code -ErrorAction SilentlyContinue | Stop-Process -Force
-Start-Sleep -Seconds 1
-Write-Pass "VS Code closed"
+Close-LaunchedVSCode
 
 if (-not $NoCleanup) {
     Write-Step "Cleaning up test output..."
